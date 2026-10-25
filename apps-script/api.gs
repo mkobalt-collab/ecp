@@ -103,6 +103,7 @@ function apiSerialize_(v) {
 // role 'admin': dozwolone tylko dla admina, może przekazać docelowy pracownikId.
 
 const API_ACTIONS_ = {
+  login: { role: 'public', queued: false, run: null }, // obsługiwane w apiHandle_ (bez tokenu)
   init: {
     role: 'user',
     queued: false,
@@ -119,6 +120,44 @@ const API_ACTIONS_ = {
   },
 };
 
+// ---------- logowanie i blokada PIN ----------
+
+const API_FAIL_LIMIT_DEV_ = 5;
+const API_FAIL_LIMIT_ALL_ = 30;
+const API_FAIL_TTL_S_ = 900;
+const API_MSG_LOCKED_ = 'Zbyt wiele nieudanych prób. Spróbuj ponownie za 15 minut.';
+
+function apiCacheInt_(cache, key) {
+  const n = parseInt(cache.get(key), 10);
+  return isNaN(n) ? 0 : n;
+}
+
+function apiNormDevice_(deviceId) {
+  // klucze CacheService mają limit 250 znaków
+  const d = typeof deviceId === 'string' ? deviceId.trim() : '';
+  return d ? d.substring(0, 100) : 'brak';
+}
+
+function apiLogin_(args, deviceId, nowMs) {
+  const cache = CacheService.getScriptCache();
+  const devKey = 'api_fail_dev_' + apiNormDevice_(deviceId);
+  const allKey = 'api_fail_all';
+  // blokada sprawdzana przed weryfikacją PIN-u
+  if (apiCacheInt_(cache, devKey) >= API_FAIL_LIMIT_DEV_ || apiCacheInt_(cache, allKey) >= API_FAIL_LIMIT_ALL_) {
+    return apiErr_('LOCKED', API_MSG_LOCKED_);
+  }
+  const pin = args && args.pin !== undefined && args.pin !== null ? String(args.pin) : '';
+  const row = pin ? weryfikujPin(pin) : null;
+  const user = row ? apiGetUser_(row.id) : null;
+  if (!user) {
+    cache.put(devKey, String(apiCacheInt_(cache, devKey) + 1), API_FAIL_TTL_S_);
+    cache.put(allKey, String(apiCacheInt_(cache, allKey) + 1), API_FAIL_TTL_S_);
+    return apiErr_('REJECTED', 'Nieprawidłowy PIN.');
+  }
+  cache.remove(devKey);
+  return { ok: true, data: { token: apiMakeToken_(user.id, nowMs), user: apiSerialize_(user) } };
+}
+
 // ---------- router ----------
 
 function apiErr_(code, error) {
@@ -133,6 +172,7 @@ function apiHandle_(req, nowMs) {
   }
   const def = API_ACTIONS_[req.action];
   try {
+    if (req.action === 'login') return apiLogin_(req.args, req.deviceId, nowMs);
     const id = apiVerifyToken_(req.token, nowMs);
     if (id === null) return apiErr_('AUTH', 'Zaloguj się ponownie.');
     const user = apiGetUser_(id);
@@ -146,7 +186,7 @@ function apiHandle_(req, nowMs) {
     if (def.role === 'user') delete args.pracownikId;
 
     const result = def.run(user, args);
-    if (result && result.ok === false) return apiErr_('REJECTED', result.error);
+    if (result && result.ok === false) return apiErr_('REJECTED', result.error || 'Operacja odrzucona.');
     return { ok: true, data: apiSerialize_(result) };
   } catch (err) {
     console.error('apiHandle_ ' + req.action + ': ' + (err && err.stack ? err.stack : err));
