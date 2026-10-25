@@ -3,7 +3,7 @@ import * as store from './store.js';
 import { createApi, NetworkError } from './api.js';
 import { createSync } from './sync.js';
 import { API_URL } from '../config.js';
-import { el, toast, cachedLoad } from './ui.js';
+import { el, toast } from './ui.js';
 
 const TABS = [
   { id: 'godziny', label: 'Godziny' },
@@ -137,29 +137,57 @@ async function logout() {
 }
 
 // ---------- ekran główny ----------
-async function loadInit(session) {
-  ctx.user = session.user;
-  ctx.init = { user: session.user, typyNieobecnosci: [], typyWyjsc: [] };
-  await cachedLoad({ key: 'init', action: 'init', ctx, render: data => {
-    ctx.init = data;
-    if (data.user) {
-      ctx.user = data.user;
-      if (data.user.imie !== session.user.imie || data.user.rola !== session.user.rola) {
-        store.kvSet('session', { ...session, user: data.user }).catch(() => {});
-        if (ui.who) ui.who.textContent = whoName();
-      }
-    }
-  } }).catch(() => {});
-}
-
+// Powłoka rysowana od razu z sesji i zapisanego init; świeży init pobierany w tle
+// (wolny Apps Script / słaby zasięg nie może dawać białego ekranu).
+let startGen = 0;
 const whoName = () => `${ctx.user.imie || ''} ${ctx.user.nazwisko || ''}`.trim();
 
 async function startApp(session) {
-  await loadInit(session);
-  if (!(await store.kvGet('session'))) return; // AUTH w trakcie init -> ekran PIN już pokazany
+  const gen = ++startGen;
+  ctx.user = session.user;
+  const cached = await store.cacheGet('init').catch(() => undefined);
+  ctx.init = cached && cached.data ? cached.data : { user: session.user, typyNieobecnosci: [], typyWyjsc: [] };
   buildShell();
   updateCounter(await ctx.sync.list().catch(() => []));
-  go(TABS[0].id);
+  if (cached) go(TABS[0].id);
+  else ui.main.replaceChildren(el('div', { class: 'card muted', role: 'status' }, 'Wczytywanie...'));
+  refreshInit(gen, !cached).catch(e => console.error(e));
+}
+
+async function refreshInit(gen, firstLoad) {
+  const stillHere = async () => gen === startGen && !!ui.main && !!(await store.kvGet('session').catch(() => null));
+  let res = null;
+  try { res = await ctx.api.call('init'); } catch (e) { /* offline — zostaje zapisany init */ }
+  if (res && res.code === 'AUTH') return; // onAuth pokazuje ekran PIN
+  if (!(await stillHere())) return; // wylogowanie albo nowy start w międzyczasie
+  if (res && res.ok && res.data) {
+    const data = res.data;
+    await store.cacheSet('init', data).catch(() => {});
+    ctx.init = data;
+    if (data.user) {
+      const prev = ctx.user;
+      ctx.user = data.user;
+      if (data.user.imie !== prev.imie || data.user.nazwisko !== prev.nazwisko || data.user.rola !== prev.rola) {
+        const session = await store.kvGet('session').catch(() => null);
+        if (session) await store.kvSet('session', { ...session, user: data.user }).catch(() => {});
+      }
+      if (ui.who) ui.who.textContent = whoName();
+      if (data.user.rola !== prev.rola && !firstLoad) { // zakładka Panel dodana / usunięta
+        const tab = current && (current.tab !== 'panel' || data.user.rola === 'admin') ? current.tab : TABS[0].id;
+        buildShell();
+        updateCounter(await ctx.sync.list().catch(() => []));
+        go(tab);
+        return;
+      }
+      if (data.user.rola !== prev.rola) buildShell();
+    }
+  } else if (firstLoad) {
+    toast(res && res.error ? res.error : 'Brak połączenia — brak zapisanych danych.', 'err');
+  }
+  if (firstLoad) {
+    updateCounter(await ctx.sync.list().catch(() => []));
+    go(TABS[0].id);
+  }
 }
 
 function buildShell() {
@@ -168,9 +196,8 @@ function buildShell() {
   ui.badge = el('span', { class: 'badge', hidden: true });
   ui.offline = el('span', { class: 'offline', hidden: ctx.online() }, 'Offline');
   ui.sync = el('button', { class: 'hbtn', type: 'button', onclick: manualSync }, 'Synchronizuj');
-  const menu = el('div', { class: 'menu', hidden: true }, el('button', { type: 'button', onclick: () => { menu.hidden = true; logout().catch(() => toast('Nie udało się wylogować.', 'err')); } }, 'Wyloguj'));
+  const menu = ui.menu = el('div', { class: 'menu', hidden: true }, el('button', { type: 'button', onclick: () => { menu.hidden = true; logout().catch(() => toast('Nie udało się wylogować.', 'err')); } }, 'Wyloguj'));
   const menuBtn = el('button', { class: 'hbtn', type: 'button', 'aria-label': 'Menu', onclick: e => { e.stopPropagation(); menu.hidden = !menu.hidden; } }, '⋮');
-  document.addEventListener('click', () => { menu.hidden = true; });
   ui.update = el('div', { class: 'update-bar', hidden: true });
   ui.main = el('main', { class: 'content' });
   ui.tabs = el('nav', { class: 'tabbar' }, TABS.filter(t => !t.admin || isAdmin).map(t =>
@@ -240,6 +267,7 @@ function setupSw() {
 
 async function main() {
   setupSw();
+  document.addEventListener('click', () => { if (ui.menu) ui.menu.hidden = true; });
   window.addEventListener('online', () => { if (ui.offline) ui.offline.hidden = true; flush(); });
   window.addEventListener('offline', () => { if (ui.offline) ui.offline.hidden = false; });
   setInterval(() => { if (pendingCount > 0 && ui.main) flush(); }, 60000);
