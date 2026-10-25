@@ -57,11 +57,22 @@ function apiVerifyToken_(token, nowMs) {
 }
 
 // ---------- użytkownik (rola czytana z arkusza przy każdym żądaniu) ----------
+// Rola: kolumna z nagłówkiem "Rola" (wiersz 1). G i H to limity urlopu — nigdy ich nie używamy.
+
+const API_ROLE_HEADER_ = 'rola';
+
+function apiRoleIndex_(header) {
+  for (let j = 0; j < header.length; j++) {
+    if (String(header[j] === undefined || header[j] === null ? '' : header[j]).trim().toLowerCase() === API_ROLE_HEADER_) return j;
+  }
+  return -1;
+}
 
 function apiGetUser_(id) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(API_SHEET_PRAC_);
   if (!sheet) return null;
   const rows = sheet.getDataRange().getValues();
+  const roleIdx = rows.length ? apiRoleIndex_(rows[0]) : -1;
   const want = String(id).trim();
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
@@ -71,7 +82,7 @@ function apiGetUser_(id) {
         imie: r[1],
         nazwisko: r[2],
         stanowisko: r[4],
-        rola: String(r[6] === undefined || r[6] === null ? '' : r[6]).trim().toLowerCase() === 'admin' ? 'admin' : 'pracownik',
+        rola: roleIdx >= 0 && String(r[roleIdx] === undefined || r[roleIdx] === null ? '' : r[roleIdx]).trim().toLowerCase() === 'admin' ? 'admin' : 'pracownik',
       };
     }
   }
@@ -315,7 +326,12 @@ function apiRunQueued_(clientId, action, user, run, nowMs) {
 function apiSetup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const prac = ss.getSheetByName(API_SHEET_PRAC_);
-  if (prac && String(prac.getRange(1, 7).getValue()).trim() === '') prac.getRange(1, 7).setValue('Rola');
+  if (prac) {
+    const lastCol = prac.getLastColumn();
+    const header = lastCol > 0 ? prac.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+    // nigdy w A–H (G = limit bieżący, H = limit zaległy)
+    if (apiRoleIndex_(header) < 0) prac.getRange(1, Math.max(lastCol + 1, 9)).setValue('Rola');
+  }
   let log = ss.getSheetByName(API_LOG_SHEET_);
   if (!log) log = ss.insertSheet(API_LOG_SHEET_);
   if (log.getLastRow() === 0) log.appendRow(API_LOG_HEADER_);

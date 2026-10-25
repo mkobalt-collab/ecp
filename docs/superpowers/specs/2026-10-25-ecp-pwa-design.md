@@ -32,7 +32,9 @@ pracowników z telefonu, publikacja w App Store / Google Play.
 ## 3. Stan obecny (z plików GS / FORM / ADMIN / KARTA)
 
 - Projekt Apps Script powiązany z arkuszem (`getActiveSpreadsheet`, `onOpen`, `onEdit`).
-- Arkusze: `Pracownicy` (ID, Imię, Nazwisko, Email, Stanowisko, PIN — kol. A–F), `Godziny`,
+- Arkusze: `Pracownicy` (ID, Imię, Nazwisko, Email, Stanowisko, PIN — kol. A–F; G = limit
+  urlopu bieżący, H = limit urlopu zaległy — czytane przez `getUrlopySummary` / `getWnioskiOczekujace`),
+  `Godziny`,
   `Urlopy` (kol. J = ID wniosku), `Wyjścia`, `Święta`.
 - `doGet` serwuje `form` / `admin` / `karta` przez HtmlService; strony wołają funkcje
   przez `google.script.run`.
@@ -92,8 +94,11 @@ Odpowiedź: `{ "ok": true, "data": … }` albo `{ "ok": false, "error": "komunik
   **Rola jest zawsze czytana z arkusza, nie z tokenu**, więc odebranie roli działa od razu;
   usunięcie pracownika z arkusza unieważnia jego token.
 - Rotacja `API_SECRET` (funkcja `apiWylogujWszystkich()`) unieważnia wszystkie sesje.
-- Kolumna G w `Pracownicy` = „Rola” (`admin` lub puste). Funkcja `apiSetup()` dodaje
-  nagłówek, jeśli go brak.
+- Rola jest w kolumnie `Pracownicy` z nagłówkiem „Rola” (wiersz 1, bez względu na wielkość
+  liter / spacje; wartość `admin` lub puste). Kolumny G i H to limity urlopu — nie są używane.
+  Funkcja `apiSetup()` dopisuje nagłówek „Rola”, jeśli żadna komórka wiersza 1 go nie ma,
+  w kolumnie max(ostatnia zajęta + 1, I) — nigdy w A–H. Brak kolumny „Rola” = wszyscy są
+  pracownikami.
 
 ### 5.3 Ochrona przed zgadywaniem PIN-u
 
@@ -222,8 +227,8 @@ pasek „Nowa wersja — odśwież”.
 ## 7. Wdrożenie
 
 1. **Apps Script**: dodaj plik `api.gs` (wkleić z `apps-script/api.gs`), uruchom raz
-   `apiSetup()` (nagłówek „Rola”, arkusz `API_Log`, sekret), wpisz `admin` w kol. G przy
-   swoim wierszu. Wdrożenie: **osobne, nowe wdrożenie** (*Wdróż → Nowe wdrożenie →
+   `apiSetup()` (nagłówek „Rola”, arkusz `API_Log`, sekret), wpisz `admin` w kolumnie „Rola”
+   (dopisanej przez `apiSetup`, najczęściej I) przy swoim wierszu. Wdrożenie: **osobne, nowe wdrożenie** (*Wdróż → Nowe wdrożenie →
    Aplikacja internetowa*, „Wykonaj jako: ja”, „Dostęp: każdy”) z własnym adresem `/exec`
    tylko dla aplikacji mobilnej. Istniejącego wdrożenia (link używany dziś przez
    pracowników) **nie edytujemy** — zostaje przypięte do swojej wersji i działa jak dotąd.
@@ -231,14 +236,15 @@ pasek „Nowa wersja — odśwież”.
    Wpływ na obecny system (sprawdzone w kodzie):
    - `api.gs` dodaje wyłącznie nowe funkcje z prefiksem `api…` i `doPost` — w projekcie
      nie ma dziś `doPost` ani funkcji o tych nazwach; istniejące funkcje nie są zmieniane.
-   - Nowa kolumna G „Rola” w `Pracownicy`: obecny kod czyta tylko kolumny A–F po indeksie,
-     więc dodatkowa kolumna nic nie zmienia.
+   - Nowa kolumna „Rola” w `Pracownicy` (za ostatnią zajętą, nie wcześniej niż I): obecny kod
+     czyta tylko kolumny A–H po indeksie (G, H = limity urlopu), więc dodatkowa kolumna nic nie
+     zmienia.
    - Ukryty arkusz `API_Log`: żaden istniejący kod nie przechodzi po wszystkich arkuszach;
      `onEdit` reaguje tylko na arkusz `Urlopy` i tylko na ręczne edycje.
    - Wspólne limity (czas wykonania, wysyłka maili) dzielone z obecnymi stronami —
      przy tej skali bez znaczenia.
    - Wycofanie: usunięcie wdrożenia mobilnego i pliku `api.gs` przywraca stan sprzed zmian
-     (kolumna G i `API_Log` mogą zostać lub zostać usunięte ręcznie).
+     (kolumna „Rola” i `API_Log` mogą zostać lub zostać usunięte ręcznie).
 2. **GitHub Pages**: repozytorium z tym projektem; workflow GitHub Actions publikuje
    folder `pwa/`. Uwaga: przy darmowym koncie repozytorium z GitHub Pages musi być
    **publiczne** — dlatego do repozytorium trafia tylko `pwa/`, `apps-script/api.gs`

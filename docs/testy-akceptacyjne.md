@@ -29,7 +29,7 @@ Użyj konta testowego pracownika i swojego konta z rolą `admin`. Odhaczaj `[x]`
 - [ ] Admin widzi **Panel** i listę wniosków.
 - [ ] Zatwierdzenie wniosku urlopowego: status zmienia się w arkuszu i w aplikacji, a pracownik dostaje mail.
 - [ ] Odrzucenie wniosku działa analogicznie.
-- [ ] Odebranie roli: usuń `admin` z kolumny G admina; kolejna akcja panelu kończy się odmową dostępu (`FORBIDDEN`), bez ponownego logowania.
+- [ ] Odebranie roli: usuń `admin` z kolumny „Rola” admina; kolejna akcja panelu kończy się odmową dostępu (`FORBIDDEN`), bez ponownego logowania.
 - [ ] Pracownik usunięty z arkusza `Pracownicy` traci dostęp od razu (kolejna akcja wymaga PIN-u i się nie udaje).
 
 ## PDF
@@ -39,7 +39,7 @@ Użyj konta testowego pracownika i swojego konta z rolą `admin`. Odhaczaj `[x]`
 ## Istniejące strony
 - [ ] Dotychczasowy link do formularza działa jak wcześniej i zapisuje do arkusza.
 - [ ] Dotychczasowy link `?page=admin` i strona karty działają jak wcześniej.
-- [ ] Arkusz `Pracownicy`: dodatkowa kolumna G „Rola” nie zepsuła niczego w istniejących funkcjach.
+- [ ] Arkusz `Pracownicy`: dodatkowa kolumna „Rola” (za ostatnią zajętą, nie w G/H) nie zepsuła niczego w istniejących funkcjach; kolumny G i H (limity urlopu) mają dawne wartości, a w starym formularzu paski urlopu i „Pozostało … dni” pokazują liczby (nie NaN).
 
 ## Instalacja i aktualizacje
 - [ ] Instalacja na iPhonie (Safari → Do ekranu początkowego) i na Androidzie (Chrome → Zainstaluj aplikację) zgodnie z `docs/instalacja.md`.

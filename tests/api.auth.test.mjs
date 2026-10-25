@@ -4,7 +4,7 @@ import { loadApi } from './helpers/gas.mjs';
 
 const T = Date.UTC(2026, 9, 25, 12, 0, 0);
 const DAY = 864e5;
-const HEADER = ['ID', 'Imię', 'Nazwisko', 'Email', 'Stanowisko', 'PIN', 'Rola'];
+const HEADER = ['ID', 'Imię', 'Nazwisko', 'Email', 'Stanowisko', 'PIN', 'Limit bieżący', 'Limit zaległy', 'Rola'];
 
 function setup(extra = {}) {
   const wpisy = { rok: 2026, miesiac: 10, godziny: [] };
@@ -13,8 +13,8 @@ function setup(extra = {}) {
     sheets: {
       Pracownicy: [
         HEADER,
-        [1, 'Jan', 'Kowalski', 'j@x.pl', 'Montażysta', '1111', ''],
-        [2, 'Ewa', 'Admin', 'e@x.pl', 'Kierownik', '2222', '  Admin '],
+        [1, 'Jan', 'Kowalski', 'j@x.pl', 'Montażysta', '1111', 26, 4, ''],
+        [2, 'Ewa', 'Admin', 'e@x.pl', 'Kierownik', '2222', 20, 0, '  Admin '],
       ],
     },
     gsFns: {
@@ -155,4 +155,15 @@ test('doPost dispatches', () => {
   const body = JSON.stringify({ action: 'init', token: tok(api, 1) });
   const out = api.raw('doPost', { postData: { contents: body } });
   assert.equal(JSON.parse(out.getContent()).ok, true);
+});
+
+test('role read from header-named "Rola" column, never from G (limit urlopu)', () => {
+  const rows = (header, r2) => ({ Pracownicy: [header, r2] });
+  const base = ['ID', 'Imię', 'Nazwisko', 'Email', 'Stanowisko', 'PIN', 'Limit bieżący', 'Limit zaległy'];
+  // Rola w dalszej kolumnie (J), nagłówek z inną wielkością liter i spacjami
+  let api = loadApi({ now: T, sheets: rows([...base, 'Uwagi', ' rola '], [5, 'A', 'B', '', 'S', '1', 26, 4, 'x', 'ADMIN']) });
+  assert.equal(api.call('apiGetUser_', 5).rola, 'admin');
+  // brak kolumny "Rola" -> wszyscy pracownik, nawet gdy w G jest tekst "admin"
+  api = loadApi({ now: T, sheets: rows(base, [5, 'A', 'B', '', 'S', '1', 'admin', 4]) });
+  assert.equal(api.call('apiGetUser_', 5).rola, 'pracownik');
 });

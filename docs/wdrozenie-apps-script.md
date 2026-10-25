@@ -19,11 +19,12 @@ Całość zajmuje ok. 20–30 minut. Istniejące strony (formularz, panel admina
    - jeśli pojawi się ostrzeżenie „Ta aplikacja nie została zweryfikowana”, kliknij **Zaawansowane**, a potem **Otwórz: (nazwa projektu) (niebezpieczne)** — to Twój własny skrypt, więc to normalne,
    - kliknij **Zezwól**.
 8. `apiSetup` robi trzy rzeczy (możesz je uruchomić ponownie bez szkody):
-   - dopisuje nagłówek **Rola** w kolumnie G arkusza `Pracownicy`,
+   - dopisuje nagłówek **Rola** w pierwszej wolnej kolumnie arkusza `Pracownicy` (za ostatnią zajętą, najwcześniej w kolumnie I — kolumn G i H z limitami urlopu nie rusza); jeśli kolumna „Rola” już jest, nic nie zmienia,
    - tworzy ukryty arkusz `API_Log` (dziennik zapisów chroniący przed duplikatami),
    - tworzy tajny klucz aplikacji i codzienny wyzwalacz czyszczący stare wpisy dziennika (starsze niż 60 dni).
-9. W arkuszu `Pracownicy`, w kolumnie **G (Rola)**, przy swoim wierszu wpisz `admin`
+9. W arkuszu `Pracownicy` znajdź kolumnę z nagłówkiem **Rola** (zwykle I) i przy swoim wierszu wpisz w niej `admin`
    (wielkość liter i spacje nie mają znaczenia). Osoby bez wpisu to zwykli pracownicy.
+   **Nie wpisuj niczego w kolumny G i H** — to limity urlopu (bieżący i zaległy) używane przez obecny system.
    Rola jest sprawdzana przy każdym działaniu — usunięcie wpisu `admin` odbiera dostęp do panelu od razu.
 10. Kliknij **Wdróż → Nowe wdrożenie**. Obok „Wybierz typ” kliknij zębatkę i wybierz **Aplikacja internetowa**. Ustaw:
     - Opis: np. „Aplikacja mobilna”,
@@ -83,7 +84,7 @@ Gdyby coś poszło nie tak:
 
 1. W edytorze Apps Script: **Wdróż → Zarządzaj wdrożeniami**, wybierz wdrożenie aplikacji mobilnej (nie to, z którego korzystają pracownicy dziś) i je **zarchiwizuj/usuń**.
 2. Usuń plik `api` z projektu (przy nazwie pliku trzy kropki → **Usuń**).
-3. To przywraca stan sprzed zmian. Kolumna G „Rola” i ukryty arkusz `API_Log` mogą zostać lub możesz je usunąć ręcznie.
+3. To przywraca stan sprzed zmian. Kolumna „Rola” i ukryty arkusz `API_Log` mogą zostać lub możesz je usunąć ręcznie.
    Codzienny wyzwalacz `apiLogCleanup` usuń w **Wyzwalacze** (ikona zegara w lewym panelu).
 
 ## Limity i uwagi

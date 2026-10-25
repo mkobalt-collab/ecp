@@ -23,6 +23,11 @@ function makeSheet(rows) {
     _hidden: false,
     getDataRange: () => ({ getValues: () => rows.map((r) => r.slice()) }),
     getLastRow: () => rows.length,
+    // ostatnia kolumna z treścią (jak w GAS)
+    getLastColumn: () => rows.reduce((m, r) => {
+      for (let j = r.length - 1; j >= 0; j--) if (r[j] !== '' && r[j] !== null && r[j] !== undefined) return Math.max(m, j + 1);
+      return m;
+    }, 0),
     getRange(r, c, nr = 1, nc = 1) {
       return {
         getValue: () => (rows[r - 1] || [])[c - 1] ?? '',

@@ -4,7 +4,7 @@ import { loadApi } from './helpers/gas.mjs';
 
 const T = Date.UTC(2026, 9, 25, 12, 0, 0);
 const DAY = 864e5;
-const HEADER = ['ID', 'Imię', 'Nazwisko', 'Email', 'Stanowisko', 'PIN', 'Rola'];
+const HEADER = ['ID', 'Imię', 'Nazwisko', 'Email', 'Stanowisko', 'PIN', 'Limit bieżący', 'Limit zaległy', 'Rola'];
 const LOG_HEADER = ['clientId', 'czas', 'pracownikId', 'akcja', 'wynik'];
 
 function setup({ gsFns = {}, sheets = {}, props } = {}) {
@@ -14,8 +14,8 @@ function setup({ gsFns = {}, sheets = {}, props } = {}) {
     sheets: {
       Pracownicy: [
         HEADER,
-        [1, 'Jan', 'Kowalski', 'j@x.pl', 'Montażysta', '1111', ''],
-        [2, 'Ewa', 'Admin', 'e@x.pl', 'Kierownik', '2222', '  Admin '],
+        [1, 'Jan', 'Kowalski', 'j@x.pl', 'Montażysta', '1111', 26, 4, ''],
+        [2, 'Ewa', 'Admin', 'e@x.pl', 'Kierownik', '2222', 20, 0, '  Admin '],
       ],
       API_Log: [LOG_HEADER],
       ...sheets,
@@ -175,23 +175,40 @@ test('admin actions map to GS arguments', () => {
 });
 
 test('apiSetup is idempotent', () => {
-  const api = loadApi({ now: T, sheets: { Pracownicy: [['ID', 'Imię', 'Nazwisko', 'Email', 'Stanowisko', 'PIN'], [1, 'J', 'K']] } });
+  const api = loadApi({ now: T, sheets: { Pracownicy: [['ID', 'Imię', 'Nazwisko', 'Email', 'Stanowisko', 'PIN', 'Limit bieżący', 'Limit zaległy'], [1, 'J', 'K', '', '', '1', 26, 4]] } });
   api.raw('apiSetup'); api.raw('apiSetup');
   assert.equal(api.triggers.length, 1);
   assert.equal(api.triggers[0].getHandlerFunction(), 'apiLogCleanup');
   assert.equal(api.triggers[0].days, 1);
   assert.equal(api.triggers[0].hour, 3);
-  assert.equal(api.sheets.Pracownicy.getRange(1, 7).getValue(), 'Rola');
+  const prac = api.sheets.Pracownicy._rows;
+  assert.deepEqual(plain(prac[0]), ['ID', 'Imię', 'Nazwisko', 'Email', 'Stanowisko', 'PIN', 'Limit bieżący', 'Limit zaległy', 'Rola']);
+  assert.deepEqual(plain(prac[1]), [1, 'J', 'K', '', '', '1', 26, 4]); // limity nietknięte
   assert.equal(api.sheets.API_Log._hidden, true);
   assert.deepEqual(plain(api.sheets.API_Log._rows), [LOG_HEADER]);
   assert.ok(api.props.API_SECRET);
 });
 
+test('apiSetup writes "Rola" never into A–H (column max(last+1, 9))', () => {
+  // tylko A–F wypełnione -> I (9), G/H zostają puste
+  let api = loadApi({ now: T, sheets: { Pracownicy: [['ID', 'Imię', 'Nazwisko', 'Email', 'Stanowisko', 'PIN']] } });
+  api.raw('apiSetup');
+  assert.equal(api.sheets.Pracownicy.getRange(1, 9).getValue(), 'Rola');
+  assert.equal(api.sheets.Pracownicy.getRange(1, 7).getValue(), '');
+  assert.equal(api.sheets.Pracownicy.getRange(1, 8).getValue(), '');
+  // 10 wypełnionych kolumn -> K (11)
+  api = loadApi({ now: T, sheets: { Pracownicy: [['ID', 'Imię', 'Nazwisko', 'Email', 'Stanowisko', 'PIN', 'L1', 'L2', 'X', 'Y']] } });
+  api.raw('apiSetup');
+  assert.equal(api.sheets.Pracownicy.getRange(1, 11).getValue(), 'Rola');
+});
+
 test('apiSetup keeps existing Rola header, secret and foreign triggers', () => {
   const api = setup({ props: { API_SECRET: 'keep' } });
+  api.sheets.Pracownicy._rows[0][8] = ' ROLA ';
   api.triggers.push({ getHandlerFunction: () => 'inna' });
   api.raw('apiSetup');
-  assert.equal(api.sheets.Pracownicy.getRange(1, 7).getValue(), 'Rola');
+  assert.equal(api.sheets.Pracownicy._rows[0].length, 9);
+  assert.equal(api.sheets.Pracownicy.getRange(1, 9).getValue(), ' ROLA ');
   assert.equal(api.props.API_SECRET, 'keep');
   assert.equal(api.triggers.length, 2);
 });

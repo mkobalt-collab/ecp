@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { loadApi } from './helpers/gas.mjs';
 
 const T = Date.UTC(2026, 9, 25, 12, 0, 0);
-const HEADER = ['ID', 'Imię', 'Nazwisko', 'Email', 'Stanowisko', 'PIN', 'Rola'];
+const HEADER = ['ID', 'Imię', 'Nazwisko', 'Email', 'Stanowisko', 'PIN', 'Limit bieżący', 'Limit zaległy', 'Rola'];
 const LOCKED_MSG = 'Zbyt wiele nieudanych prób. Spróbuj ponownie za 15 minut.';
 
 function setup(extra = {}) {
@@ -12,8 +12,8 @@ function setup(extra = {}) {
     sheets: {
       Pracownicy: [
         HEADER,
-        [1, 'Jan', 'Kowalski', 'j@x.pl', 'Montażysta', '1111', ''],
-        [2, 'Ewa', 'Admin', 'e@x.pl', 'Kierownik', '2222', ' admin '],
+        [1, 'Jan', 'Kowalski', 'j@x.pl', 'Montażysta', '1111', 26, 4, ''],
+        [2, 'Ewa', 'Admin', 'e@x.pl', 'Kierownik', '2222', 20, 0, ' admin '],
       ],
     },
     gsFns: {
