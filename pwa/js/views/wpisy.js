@@ -1,9 +1,8 @@
-import { el, fill, toast, fmtDate, fmtH, monthPicker, statusBadge, loadWpisy } from '../ui.js';
+import { el, fill, toast, fmtDate, fmtH, monthPicker, statusBadge, loadWpisy, p2 } from '../ui.js';
 import { openPdf } from '../pdf.js';
 import { NetworkError } from '../api.js';
 
 const TAB_FOR = { zapiszGodziny: 'godziny', zapiszUrlop: 'urlop', zapiszWyjscie: 'wyjscia' };
-const p2 = n => String(n).padStart(2, '0');
 const monthOf = it => (it.action === 'zapiszUrlop' ? it.args.dataOd : it.args.data || '').slice(0, 7);
 const label = it => {
   const a = it.args;
@@ -15,11 +14,14 @@ const label = it => {
 export function mount(container, ctx, prefill) {
   const t = new Date();
   let { rok, miesiac } = { rok: t.getFullYear(), miesiac: t.getMonth() + 1 };
-  let loadSeq = 0, queue = [], lastIds = new Set(), month = null, editing = null;
+  let fresh = false, busy = 0, loadSeq = 0, queue = [], lastIds = new Set(), month = null, editing = null;
   const queueBox = el('div');
   const body = el('div');
   const needNet = () => !ctx.online();
-  const netProps = () => ({ disabled: needNet(), title: needNet() ? 'Wymaga internetu' : null });
+  // Edycja/usuwanie tylko online, na świeżych danych (wiersz z cache mógłby być nieaktualny) i bez trwającej zmiany.
+  const rowLocked = () => needNet() || !fresh || busy > 0;
+  const netProps = () => ({ disabled: rowLocked(), title: needNet() ? 'Wymaga internetu' : rowLocked() ? 'Odświeżanie danych…' : null });
+  const pdfProps = () => ({ disabled: needNet(), title: needNet() ? 'Wymaga internetu' : null });
   const sbtn = (txt, onclick, extra = {}, props = {}) => el('button', { class: 'sbtn ' + (extra.danger ? 'danger' : ''), type: 'button', onclick, ...props }, txt);
 
   // ---- kolejka ----
@@ -44,12 +46,16 @@ export function mount(container, ctx, prefill) {
 
   // ---- operacje online ----
   async function run(action, args) {
+    busy++; renderMonth();
     try {
       const res = await ctx.api.call(action, args);
-      if (res.ok) { load(); return true; }
+      if (res.ok) { fresh = false; return true; }
       if (res.code !== 'AUTH') toast(res.error || 'Operacja nie powiodła się.', 'err');
     } catch (e) {
       if (e instanceof NetworkError) toast('Wymaga internetu.', 'err'); else throw e;
+    } finally {
+      busy--;
+      if (!fresh) load(); else renderMonth();
     }
     return false;
   }
@@ -95,11 +101,12 @@ export function mount(container, ctx, prefill) {
   }
   async function load() {
     const seq = ++loadSeq;
+    fresh = false; renderMonth();
     const mine = () => seq === loadSeq && container.isConnected;
-    await loadWpisy(ctx, rok, miesiac, (d, { note }) => { if (mine()) { month = d; renderMonth(note); } }, body).catch(() => {});
+    await loadWpisy(ctx, rok, miesiac, (d, { note, stale }) => { if (mine()) { month = d; fresh = !stale; renderMonth(note); } }, body).catch(() => {});
   }
 
-  const pdf = el('button', { class: 'btn btn-pdf', type: 'button', ...netProps(), onclick: async () => {
+  const pdf = el('button', { class: 'btn btn-pdf', type: 'button', ...pdfProps(), onclick: async () => {
     pdf.disabled = true;
     try {
       const res = await ctx.api.call('mojaKarta', { rok, miesiac });
@@ -107,7 +114,7 @@ export function mount(container, ctx, prefill) {
     } catch (e) { toast(e instanceof NetworkError ? 'Wymaga internetu.' : 'Nie udało się otworzyć karty.', 'err'); }
     pdf.disabled = needNet();
   } }, 'Moja karta PDF');
-  const syncNet = () => { if (container.isConnected) { pdf.disabled = needNet(); pdf.title = needNet() ? 'Wymaga internetu' : ''; renderMonth(); } };
+  const syncNet = () => { if (container.isConnected) { pdf.disabled = needNet(); pdf.title = needNet() ? 'Wymaga internetu' : ''; if (editing === null) renderMonth(); } };
   window.addEventListener('online', syncNet); window.addEventListener('offline', syncNet);
   ctx.onLeave(() => { window.removeEventListener('online', syncNet); window.removeEventListener('offline', syncNet); });
 

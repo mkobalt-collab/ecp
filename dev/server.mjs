@@ -30,6 +30,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api') {
       if (req.method !== 'POST') return send(res, 405, 'Method Not Allowed');
       if (process.env.MOCK_OFFLINE === '1') return send(res, 503, 'offline');
+      if (process.env.MOCK_DELAY_MS) await new Promise(r => setTimeout(r, Number(process.env.MOCK_DELAY_MS)));
       let body;
       try { body = JSON.parse(await readBody(req)); } catch { body = null; }
       const out = handle(body);

@@ -41,7 +41,7 @@ export function fmtDate(iso) {
   return m ? `${m[3]}.${m[2]}.${m[1]}` : String(iso || '');
 }
 
-const p2 = n => String(n).padStart(2, '0');
+export const p2 = n => String(n).padStart(2, '0');
 function fmtStamp(ts) {
   const d = new Date(ts);
   return `${p2(d.getDate())}.${p2(d.getMonth() + 1)} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
