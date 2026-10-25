@@ -46,14 +46,28 @@ Całość zajmuje ok. 20–30 minut. Istniejące strony (formularz, panel admina
    ... : 'https://script.google.com/macros/s/XXXX/exec';
    ```
    Fragment `'/api'` wcześniej w tej linii służy tylko do testów lokalnych — nie ruszaj go.
-3. Zapisz plik i opublikuj aplikację (patrz „Publikacja na GitHub Pages” poniżej).
+3. Zapisz plik. Zatwierdź zmianę w git i przenieś kod na gałąź `main` — aplikacja powstała na gałęzi
+   `feature/pwa`, a GitHub Pages publikuje tylko `main`. W terminalu, w folderze projektu:
+   ```sh
+   git checkout feature/pwa
+   git add pwa/config.js
+   git commit -m "Adres serwera aplikacji mobilnej"
+   git checkout main
+   git merge feature/pwa
+   ```
+   Wypchnięcie na GitHub — w części C, krok 2.
 
 ## Część C. Publikacja na GitHub Pages
 
 1. Na github.com utwórz **publiczne** repozytorium (przy darmowym koncie GitHub Pages wymaga publicznego).
    W repozytorium nie ma żadnych haseł ani PIN-ów. Pliki `.docx` i folder `reference/` są w `.gitignore`
    i nie trafią do repozytorium.
-2. Wypchnij projekt na gałąź `main` (np. `git remote add origin <adres repozytorium>` i `git push -u origin main`).
+2. Wypchnij gałąź `main` (z części B, krok 3) do repozytorium:
+   ```sh
+   git remote add origin <adres repozytorium>   # tylko za pierwszym razem
+   git push -u origin main
+   ```
+   Przy kolejnych zmianach wystarczy: commit na `main` (albo merge `feature/pwa` → `main`) i `git push`.
 3. W repozytorium wejdź w **Settings → Pages** i w polu **Source** wybierz **GitHub Actions**.
 4. Zakładka **Actions** pokaże przebieg „Publikacja na GitHub Pages”. Po zielonym znaczniku
    adres aplikacji (`https://<twoja-nazwa>.github.io/<repozytorium>/`) widać w Settings → Pages. Ten link wysyłasz pracownikom razem z instrukcją `docs/instalacja.md`.

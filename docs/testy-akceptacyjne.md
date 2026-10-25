@@ -8,13 +8,16 @@ Użyj konta testowego pracownika i swojego konta z rolą `admin`. Odhaczaj `[x]`
 - [ ] Błędny PIN pokazuje czytelny komunikat (bez informacji technicznych).
 - [ ] 5 błędnych PIN-ów z jednego telefonu blokuje logowanie na 15 minut (komunikat o blokadzie).
 - [ ] Po upływie blokady poprawny PIN działa.
-- [ ] Po `apiWylogujWszystkich` aplikacja prosi o PIN, a niewysłane wpisy z kolejki zostają.
+- [ ] Uruchom w edytorze Apps Script funkcję `apiWylogujWszystkich` (lista funkcji obok **Uruchom** → `apiWylogujWszystkich` → **Uruchom**); aplikacja przy następnej akcji prosi o PIN, a niewysłane wpisy z kolejki zostają.
 
 ## Zapis online
 - [ ] Zapis godzin online: wiersz pojawia się w arkuszu w poprawnej kolumnie i dacie.
 - [ ] Zapis urlopu online: wiersz pojawia się w arkuszu `Urlopy`.
 - [ ] Zapis wyjścia online: wiersz pojawia się w arkuszu wyjść.
 - [ ] Wpis jest widoczny w zakładce **Wpisy** (z sumami przepracowanych godzin i nadgodzin).
+- [ ] Po zapisie godzin online pojawia się komunikat z wynikiem, np. „Zapisano — 8.00 h, nadgodziny 0.00 h”.
+- [ ] Drugi wpis godzin na ten sam dzień jest odrzucany: „Masz już wpis na ten dzień. Skontaktuj się z administratorem w celu korekty.” (w arkuszu nadal jeden wiersz).
+- [ ] Praca przez północ (np. 22:00–06:00): aplikacja pyta „Praca przez północ? …”, a w arkuszu jest 8 h.
 
 ## Offline i synchronizacja
 - [ ] Tryb samolotowy: zapis godzin pokazuje ⏳ i licznik **Do wysłania**.
@@ -35,6 +38,7 @@ Użyj konta testowego pracownika i swojego konta z rolą `admin`. Odhaczaj `[x]`
 ## PDF
 - [ ] Pobranie karty pracownika (PDF): generuje się w ciągu kilkunastu sekund i otwiera poprawnie.
 - [ ] Pobranie PDF raportu z panelu admina: otwiera się poprawnie, dane zgadzają się z arkuszem.
+- [ ] Po wygenerowaniu PDF pojawia się pasek **Otwórz / Udostępnij PDF (nazwa)**; jego stuknięcie otwiera arkusz udostępniania albo plik w nowej karcie — **sprawdź na prawdziwym iPhonie (aplikacja z ekranu początkowego) i na prawdziwym Androidzie**, także dla karty z zakładki **Wpisy**.
 
 ## Istniejące strony
 - [ ] Dotychczasowy link do formularza działa jak wcześniej i zapisuje do arkusza.
