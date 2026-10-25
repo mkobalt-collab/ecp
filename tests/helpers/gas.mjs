@@ -39,10 +39,17 @@ function makeSheet(rows) {
           while (rows.length < r) rows.push([]);
           rows[r - 1][c - 1] = v;
         },
+        setValues(vals) {
+          vals.forEach((row, i) => {
+            while (rows.length < r + i) rows.push([]);
+            row.forEach((v, j) => { rows[r - 1 + i][c - 1 + j] = v; });
+          });
+        },
       };
     },
     appendRow: (row) => { rows.push(row.slice()); },
     hideSheet: () => { sheet._hidden = true; },
+    deleteRow: (i) => { rows.splice(i - 1, 1); },
   };
   return sheet;
 }
@@ -55,7 +62,7 @@ export function loadApi({ sheets = {}, gsFns = {}, props = {}, now = Date.UTC(20
   for (const [name, rows] of Object.entries(sheets)) sheetObjs[name] = makeSheet(rows);
   const propStore = { ...props };
   const cacheStore = new Map(); // key -> {v, exp}
-  const lockState = { held: false, failTry: false, events: [] };
+  const lockState = { held: false, failTry: false, failWait: false, events: [] };
 
   const ss = {
     getSheetByName: (n) => sheetObjs[n] || null,
@@ -86,7 +93,11 @@ export function loadApi({ sheets = {}, gsFns = {}, props = {}, now = Date.UTC(20
     },
     LockService: {
       getScriptLock: () => ({
-        waitLock: () => { lockState.events.push('wait'); lockState.held = true; },
+        waitLock: (ms) => {
+          lockState.events.push('wait:' + ms);
+          if (lockState.failWait) throw new Error('Lock timeout');
+          lockState.held = true;
+        },
         tryLock: (ms) => {
           lockState.events.push('try:' + ms);
           if (lockState.failTry) return false;
@@ -122,7 +133,7 @@ export function loadApi({ sheets = {}, gsFns = {}, props = {}, now = Date.UTC(20
     },
     ScriptApp: {
       newTrigger(fn) {
-        const t = { fn, kind: null };
+        const t = { fn, kind: null, getHandlerFunction: () => fn };
         const b = {
           timeBased() { t.kind = 'time'; return b; },
           everyDays(n) { t.days = n; return b; },

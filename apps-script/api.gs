@@ -16,6 +16,10 @@ function apiSecret_() {
   if (!s) {
     s = Utilities.getUuid() + Utilities.getUuid();
     props.setProperty('API_SECRET', s);
+    // Pierwsze utworzenie (normalnie robi je apiSetup): odczyt po zapisie zawęża okno wyścigu
+    // do wartości, która faktycznie została w Script Properties. Blokady tu nie biorę — apiSecret_
+    // jest wołane także pod script lockiem (logowanie, zapisy), a ten nie jest reentrant.
+    s = props.getProperty('API_SECRET') || s;
   }
   return s;
 }
@@ -102,6 +106,43 @@ function apiSerialize_(v) {
 // role 'user': pracownikId z klienta jest ignorowany (zawsze z tokenu).
 // role 'admin': dozwolone tylko dla admina, może przekazać docelowy pracownikId.
 
+function apiUserAct_(fn) {
+  // fn(user.id, args) — pracownikId zawsze z tokenu
+  return { role: 'user', queued: false, run: function (user, args) { return fn(user.id, args); } };
+}
+
+function apiAdminAct_(fn) {
+  return { role: 'admin', queued: false, run: function (user, args) { return fn(args, user); } };
+}
+
+function apiQueuedAct_(fn) {
+  return {
+    role: 'user',
+    queued: true,
+    run: function (user, args) {
+      const d = {};
+      Object.keys(args).forEach(function (k) { d[k] = args[k]; });
+      d.pracownikId = user.id;
+      return fn(d);
+    },
+  };
+}
+
+function apiWpisImieniaAdmina_(idWniosku, user) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Urlopy');
+  if (!sheet) return;
+  const last = sheet.getLastRow();
+  if (last < 2) return;
+  const ids = sheet.getRange(2, 10, last - 1, 1).getValues();
+  const want = String(idWniosku).trim();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === want) {
+      sheet.getRange(i + 2, 11).setValue((String(user.imie || '') + ' ' + String(user.nazwisko || '')).trim());
+      return;
+    }
+  }
+}
+
 const API_ACTIONS_ = {
   login: { role: 'public', queued: false, run: null }, // obsługiwane w apiHandle_ (bez tokenu)
   init: {
@@ -111,13 +152,44 @@ const API_ACTIONS_ = {
       return { user: user, typyNieobecnosci: getTypyNieobecnosci(), typyWyjsc: getTypyWyjsc() };
     },
   },
-  getMojeWpisy: {
-    role: 'user',
-    queued: false,
-    run: function (user, args) {
-      return getMojeWpisy(user.id, args.rok, args.miesiac);
-    },
-  },
+  zapiszGodziny: apiQueuedAct_(function (d) { return zapiszGodziny(d); }),
+  zapiszUrlop: apiQueuedAct_(function (d) { return zapiszUrlop(d); }),
+  zapiszWyjscie: apiQueuedAct_(function (d) { return zapiszWyjscie(d); }),
+  getMojeWpisy: apiUserAct_(function (id, a) { return getMojeWpisy(id, a.rok, a.miesiac); }),
+  getSaldoWyjsc: apiUserAct_(function (id, a) { return getSaldoWyjsc(id); }),
+  getUrlopySummary: apiUserAct_(function (id, a) { return getUrlopySummary(id); }),
+  getBrakujaceDni: apiUserAct_(function (id, a) { return getBrakujaceDni(id); }),
+  korygujGodziny: apiUserAct_(function (id, a) {
+    return korygujGodziny(id, a.wiersz, { godzOd: a.godzOd, godzDo: a.godzDo, uwagi: a.uwagi });
+  }),
+  usunGodziny: apiUserAct_(function (id, a) { return usunGodziny(id, a.wiersz); }),
+  usunNieobecnosc: apiUserAct_(function (id, a) { return usunNieobecnosc(id, a.wiersz); }),
+  usunWyjscie: apiUserAct_(function (id, a) { return usunWyjscie(id, a.wiersz); }),
+  mojaKarta: apiUserAct_(function (id, a) { return generujKartePracownika(id, a.rok, a.miesiac); }),
+
+  getWnioskiOczekujace: apiAdminAct_(function (a) { return getWnioskiOczekujace(); }),
+  ustawStatusUrlopu: apiAdminAct_(function (a, user) {
+    const res = ustawStatusUrlopu(a.idWniosku, a.status);
+    // anonimowe wdrożenie nie zna e-maila admina — wpisujemy imię i nazwisko z arkusza
+    if (!res || res.ok !== false) apiWpisImieniaAdmina_(a.idWniosku, user);
+    return res;
+  }),
+  pdfWniosku: apiAdminAct_(function (a) { return generujPdfZPanelu(a.idWniosku); }),
+  getWyjsciaAdmin: apiAdminAct_(function (a) { return getWyjsciaAdmin(a.rok, a.miesiac); }),
+  zmienStatusWyjscia: apiAdminAct_(function (a) { return zmienStatusWyjscia(a.wiersz, a.status); }),
+  adminUsunWyjscie: apiAdminAct_(function (a) { return adminUsunWyjscie(a.wiersz); }),
+  getNieobecnosciAdmin: apiAdminAct_(function (a) { return getNieobecnosciAdmin(a.rok, a.miesiac); }),
+  adminUsunNieobecnosc: apiAdminAct_(function (a) { return adminUsunNieobecnosc(a.wiersz); }),
+  getPracownicy: apiAdminAct_(function (a) { return getPracownicy(); }),
+  getHistoriaPracownika: apiAdminAct_(function (a) { return getHistoriaPracownika(a.pracownikId, a.rok, a.miesiac); }),
+  getRaportMiesieczny: apiAdminAct_(function (a) { return getRaportMiesieczny(a.rok, a.miesiac); }),
+  pdfRaportMiesieczny: apiAdminAct_(function (a) { return generujRaportMiesiecznyPdf(a.rok, a.miesiac); }),
+  pdfKartyEwidencji: apiAdminAct_(function (a) { return generujKartyEwidencji(a.rok, a.miesiac); }),
+  pdfNadgodziny: apiAdminAct_(function (a) { return generujRaportNadgodzinDoWeryfikacji(a.rok, a.miesiac); }),
+  pdfWnioskiMiesiaca: apiAdminAct_(function (a) { return generujPdfWnioskowMiesiaca(a.rok, a.miesiac, a.pracownikId); }),
+  pdfKsiegowosc: apiAdminAct_(function (a) { return generujRaportKsiegowosc(a.rok, a.miesiac); }),
+  pdfZestawienie: apiAdminAct_(function (a) { return generujZestawienieNadgodzinUrlopy(a.rok, a.miesiac); }),
+  pdfKartaPracownika: apiAdminAct_(function (a) { return generujKartePracownika(a.pracownikId, a.rok, a.miesiac); }),
 };
 
 // ---------- logowanie i blokada PIN ----------
@@ -169,10 +241,83 @@ function apiLoginLocked_(args, deviceId, nowMs) {
   return { ok: true, data: { token: apiMakeToken_(user.id, nowMs), user: apiSerialize_(user) } };
 }
 
+// ---------- idempotencja (API_Log: A clientId, B czas, C pracownikId, D akcja, E wynik JSON) ----------
+
+const API_LOG_SHEET_ = 'API_Log';
+const API_LOG_HEADER_ = ['clientId', 'czas', 'pracownikId', 'akcja', 'wynik'];
+const API_LOG_MAX_AGE_MS_ = 60 * 24 * 60 * 60 * 1000;
+
+function apiRunQueued_(clientId, action, user, run, nowMs) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(API_LOG_SHEET_);
+  if (!sheet) throw new Error('Brak arkusza API_Log — uruchom apiSetup().');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000); // przy przekroczeniu rzuca wyjątek -> SERVER w routerze
+  try {
+    const last = sheet.getLastRow();
+    if (last >= 2) {
+      const ids = sheet.getRange(2, 1, last - 1, 1).getValues(); // tylko kolumna A
+      for (let i = 0; i < ids.length; i++) {
+        if (String(ids[i][0]) === clientId) return JSON.parse(sheet.getRange(i + 2, 5).getValue());
+      }
+    }
+    const resp = run();
+    sheet.appendRow([clientId, new Date(nowMs), user.id, action, JSON.stringify(resp)]);
+    return resp;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ---------- konfiguracja (uruchom ręcznie raz z edytora) ----------
+
+function apiSetup() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const prac = ss.getSheetByName(API_SHEET_PRAC_);
+  if (prac && String(prac.getRange(1, 7).getValue()).trim() === '') prac.getRange(1, 7).setValue('Rola');
+  let log = ss.getSheetByName(API_LOG_SHEET_);
+  if (!log) log = ss.insertSheet(API_LOG_SHEET_);
+  if (log.getLastRow() === 0) log.appendRow(API_LOG_HEADER_);
+  log.hideSheet();
+  apiSecret_();
+  const has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'apiLogCleanup'; });
+  if (!has) ScriptApp.newTrigger('apiLogCleanup').timeBased().everyDays(1).atHour(3).create();
+}
+
+function apiLogCleanup(nowMs) {
+  nowMs = typeof nowMs === 'number' ? nowMs : Date.now();
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(API_LOG_SHEET_);
+  if (!sheet) return;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const last = sheet.getLastRow();
+    if (last < 2) return;
+    const times = sheet.getRange(2, 2, last - 1, 1).getValues();
+    const cutoff = nowMs - API_LOG_MAX_AGE_MS_;
+    for (let i = times.length - 1; i >= 0; i--) { // od dołu, żeby numery wierszy się nie przesuwały
+      const t = new Date(times[i][0]).getTime();
+      if (!isNaN(t) && t < cutoff) sheet.deleteRow(i + 2);
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function apiWylogujWszystkich() {
+  // nowy sekret unieważnia wszystkie wydane tokeny
+  PropertiesService.getScriptProperties().setProperty('API_SECRET', Utilities.getUuid() + Utilities.getUuid());
+}
+
 // ---------- router ----------
 
 function apiErr_(code, error) {
   return { ok: false, code: code, error: error };
+}
+
+function apiRunDef_(def, user, args) {
+  const result = def.run(user, args);
+  if (result && result.ok === false) return apiErr_('REJECTED', result.error || 'Operacja odrzucona.');
+  return { ok: true, data: apiSerialize_(result) };
 }
 
 function apiHandle_(req, nowMs) {
@@ -196,9 +341,14 @@ function apiHandle_(req, nowMs) {
     }
     if (def.role === 'user') delete args.pracownikId;
 
-    const result = def.run(user, args);
-    if (result && result.ok === false) return apiErr_('REJECTED', result.error || 'Operacja odrzucona.');
-    return { ok: true, data: apiSerialize_(result) };
+    if (def.queued) {
+      // clientId = klucz idempotencji; nie trafia do funkcji GS
+      const clientId = req.clientId !== undefined ? req.clientId : args.clientId;
+      delete args.clientId;
+      if (typeof clientId !== 'string' || !clientId.trim()) return apiErr_('BAD_REQUEST', 'Brak identyfikatora zapisu.');
+      return apiRunQueued_(clientId.trim(), req.action, user, function () { return apiRunDef_(def, user, args); }, nowMs);
+    }
+    return apiRunDef_(def, user, args);
   } catch (err) {
     console.error('apiHandle_ ' + req.action + ': ' + (err && err.stack ? err.stack : err));
     return apiErr_('SERVER', API_MSG_SERVER_);
