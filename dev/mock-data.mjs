@@ -6,6 +6,7 @@ const TYPY_WYJ = ['Wyjście prywatne', 'Odpracowanie'];
 
 const USERS = {
   '1111': { id: 'P001', imie: 'Anna', nazwisko: 'Kowalska', stanowisko: 'Technik weterynarii', rola: 'pracownik' },
+  '2222': { id: 'P002', imie: 'Jan', nazwisko: 'Nowak', stanowisko: 'Lekarz weterynarii', rola: 'pracownik' },
   '9999': { id: 'A001', imie: 'Marcin', nazwisko: 'Admin', stanowisko: 'Kierownik', rola: 'admin' },
 };
 const byId = id => Object.values(USERS).find(u => u.id === id);
@@ -48,6 +49,9 @@ function seed() {
   if (t.getDate() > 2) state.godziny.push(mk(1, '08:00', '16:00'), mk(2, '08:00', '17:30', 'Inwentaryzacja'));
   state.nieob.push({ wiersz: state.nextRow++, id: 'W-' + state.nextId++, pid: 'P001', pracownik: 'Anna Kowalska', typ: 'Urlop wypoczynkowy', dataOd: iso(new Date(y, m, 20)), dataDo: iso(new Date(y, m, 22)), dni: 3, uwagi: '', status: 'Oczekuje', zlozono: '01.01.' + y + ' 09:00' });
   state.wyj.push({ wiersz: state.nextRow++, pid: 'P001', pracownik: 'Anna Kowalska', rodzaj: 'Wyjście prywatne', data: iso(new Date(y, m, 1)), od: '10:00', do: '12:00', godziny: 2, uwagi: '', status: 'Zatwierdzone' });
+  state.nieob.push({ wiersz: state.nextRow++, id: 'W-' + state.nextId++, pid: 'P002', pracownik: 'Jan Nowak', typ: 'Urlop wypoczynkowy', dataOd: iso(new Date(y, m, 5)), dataDo: iso(new Date(y, m, 13)), dni: 7, uwagi: 'Wyjazd rodzinny', status: 'Oczekuje', zlozono: '02.01.' + y + ' 10:30' });
+  state.wyj.push({ wiersz: state.nextRow++, pid: 'P002', pracownik: 'Jan Nowak', rodzaj: 'Wyjście prywatne', data: iso(new Date(y, m, 2)), od: '14:00', do: '15:30', godziny: 1.5, uwagi: 'Wizyta u lekarza', status: 'Oczekuje' });
+  state.godziny.push({ wiersz: state.nextRow++, pid: 'P002', data: iso(new Date(y, m, 1)), od: '08:00', do: '16:00', przepracowane: 8, nadgodziny: 0, projekt: '', uwagi: '' });
 }
 seed();
 
@@ -160,8 +164,10 @@ const ACTIONS = {
   ustawStatusUrlopu: { role: 'admin', run: (a, args) => {
     const n = state.nieob.find(x => x.id === args.idWniosku);
     if (!n) return { ok: false, error: 'Nie znaleziono wniosku' };
+    if (!['Zatwierdzone', 'Odrzucone', 'Oczekuje'].includes(args.status)) return { ok: false, error: 'Nieprawidłowy status.' };
     n.status = args.status;
-    return { ok: true };
+    const warn = args.status === 'Zatwierdzone' && n.dni > 5 ? `Uwaga: pracownik przekroczył limit urlopu o ${n.dni - 5} dni.` : '';
+    return { ok: true, status: args.status, mailWyslany: true, ostrzezenie: warn };
   } },
   pdfWniosku: { role: 'admin', run: () => ({ ok: true, base64: PDF_B64, nazwa: 'Wniosek.pdf' }) },
   getWyjsciaAdmin: { role: 'admin', run: (a, args) => {
@@ -212,6 +218,12 @@ const ACTIONS = {
     return Object.values(m).sort((a, b) => a.name.localeCompare(b.name));
   } },
   pdfRaportMiesieczny: { role: 'admin', run: () => ({ ok: true, base64: PDF_B64, nazwa: 'Raport.pdf' }) },
+  pdfKartyEwidencji: { role: 'admin', run: () => ({ ok: true, base64: PDF_B64, nazwa: 'Karty_ewidencji.pdf' }) },
+  pdfNadgodziny: { role: 'admin', run: () => ({ ok: true, base64: PDF_B64, nazwa: 'Nadgodziny_do_weryfikacji.pdf' }) },
+  pdfWnioskiMiesiaca: { role: 'admin', run: () => ({ ok: true, base64: PDF_B64, nazwa: 'Wnioski_miesiaca.pdf' }) },
+  pdfKsiegowosc: { role: 'admin', run: () => ({ ok: true, base64: PDF_B64, nazwa: 'Ksiegowosc.pdf' }) },
+  pdfZestawienie: { role: 'admin', run: () => ({ ok: true, base64: PDF_B64, nazwa: 'Zestawienie.pdf' }) },
+  pdfKartaPracownika: { role: 'admin', run: (a, args) => byId(args.pracownikId) ? { ok: true, base64: PDF_B64, nazwa: 'Karta_' + args.pracownikId + '.pdf' } : { ok: false, error: 'Nie znaleziono pracownika' } },
 };
 
 function del(arr, wiersz, pid, lockedMsg) {
