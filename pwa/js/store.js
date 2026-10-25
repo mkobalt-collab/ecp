@@ -37,6 +37,7 @@ async function run(storeName, mode, fn) {
 }
 
 export const outboxAdd = item => run('outbox', 'readwrite', s => s.add(item));
+export const outboxGet = clientId => run('outbox', 'readonly', s => s.get(clientId));
 export const outboxPut = item => run('outbox', 'readwrite', s => s.put(item));
 export const outboxRemove = clientId => run('outbox', 'readwrite', s => s.delete(clientId));
 export async function outboxList() {

@@ -10,12 +10,14 @@ export function createSync({ store, api, onChange = () => {}, newId = () => cryp
 
   const list = () => store.outboxList();
   async function notify() {
-    try { onChange(await list()); } catch (e) { /* UI nie może psuć synchronizacji */ }
+    try { await onChange(await list()); } catch (e) { /* UI nie może psuć synchronizacji */ }
   }
 
   async function runOnce() {
     const items = (await list()).filter(i => i.status === 'pending');
-    for (const it of items) {
+    for (const snap of items) {
+      const it = await store.outboxGet(snap.clientId);
+      if (!it || it.status !== 'pending') continue; // usunięty/zmieniony w międzyczasie
       let res;
       try {
         res = await api.call(it.action, it.args, { clientId: it.clientId });
@@ -27,7 +29,8 @@ export function createSync({ store, api, onChange = () => {}, newId = () => cryp
         await store.outboxRemove(it.clientId);
         await notify();
       } else if (res && FATAL_ITEM.has(res.code)) {
-        await store.outboxPut({ ...it, status: 'error', error: res.error || 'Błąd zapisu.' });
+        const cur = await store.outboxGet(it.clientId);
+        if (cur) await store.outboxPut({ ...cur, status: 'error', error: res.error || 'Błąd zapisu.' });
         await notify();
       } else {
         return false; // AUTH, SERVER, LOCKED, nieznany: zatrzymaj, element zostaje

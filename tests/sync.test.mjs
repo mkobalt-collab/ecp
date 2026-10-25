@@ -163,3 +163,59 @@ test('onChange dostaje aktualną listę po każdej zmianie', async () => {
   assert.equal(changes[0][0].status, 'pending');
   assert.deepEqual(changes.at(-1), []);
 });
+
+function gated(codeFor) {
+  const gates = {};
+  const calls = [];
+  const api = {
+    async call(action, args, { clientId }) {
+      calls.push(clientId);
+      if (clientId === 'a') await new Promise(r => { gates.release = r; gates.started = true; });
+      return codeFor(clientId);
+    },
+  };
+  return { api, gates, calls };
+}
+const seedAB = async () => {
+  await store.outboxAdd({ clientId: 'a', action: 'zapiszGodziny', args: {}, createdAt: 1, status: 'pending' });
+  await store.outboxAdd({ clientId: 'b', action: 'zapiszGodziny', args: {}, createdAt: 2, status: 'pending' });
+};
+const tick = () => new Promise(r => setTimeout(r, 20));
+
+test('discard późniejszego pending w trakcie wysyłki wcześniejszego: nigdy wysłany', async () => {
+  const { api, gates, calls } = gated(() => ({ ok: true }));
+  const sync = createSync({ store, api, newId: () => 'x' });
+  await seedAB();
+  const p = sync.flush();
+  await tick();
+  await sync.discard('b');
+  gates.release();
+  await p;
+  assert.deepEqual(calls, ['a']);
+  assert.deepEqual(await sync.list(), []);
+});
+
+test('discard elementu w locie, potem REJECTED: nie wskrzesza', async () => {
+  const { api, gates } = gated(() => ({ ok: false, code: 'REJECTED', error: 'zle' }));
+  const sync = createSync({ store, api, newId: () => 'x' });
+  await store.outboxAdd({ clientId: 'a', action: 'zapiszGodziny', args: {}, createdAt: 1, status: 'pending' });
+  const p = sync.flush();
+  await tick();
+  await sync.discard('a');
+  gates.release();
+  await p;
+  assert.deepEqual(await sync.list(), []);
+});
+
+test('replace elementu w locie, potem REJECTED: zostaje tylko nowy', async () => {
+  const { api, gates } = gated(id => id === 'a' ? { ok: false, code: 'REJECTED', error: 'zle' } : { ok: false, code: 'SERVER' });
+  const sync = createSync({ store, api, newId: () => 'new1' });
+  await store.outboxAdd({ clientId: 'a', action: 'zapiszGodziny', args: {}, createdAt: 1, status: 'pending' });
+  const p = sync.flush();
+  await tick();
+  await sync.replace('a', 'zapiszGodziny', { v: 2 });
+  gates.release();
+  await p;
+  await sync.flush();
+  assert.deepEqual((await sync.list()).map(i => i.clientId), ['new1']);
+});
