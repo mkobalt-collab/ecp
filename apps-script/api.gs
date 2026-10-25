@@ -171,7 +171,8 @@ const API_ACTIONS_ = {
   ustawStatusUrlopu: apiAdminAct_(function (a, user) {
     const res = ustawStatusUrlopu(a.idWniosku, a.status);
     // anonimowe wdrożenie nie zna e-maila admina — wpisujemy imię i nazwisko z arkusza
-    if (!res || res.ok !== false) apiWpisImieniaAdmina_(a.idWniosku, user);
+    // GS dla 'Oczekuje' sam czyści kol. K/L — nie wpisujemy wtedy imienia
+    if ((!res || res.ok !== false) && a.status !== 'Oczekuje') apiWpisImieniaAdmina_(a.idWniosku, user);
     return res;
   }),
   pdfWniosku: apiAdminAct_(function (a) { return generujPdfZPanelu(a.idWniosku); }),
@@ -247,25 +248,66 @@ const API_LOG_SHEET_ = 'API_Log';
 const API_LOG_HEADER_ = ['clientId', 'czas', 'pracownikId', 'akcja', 'wynik'];
 const API_LOG_MAX_AGE_MS_ = 60 * 24 * 60 * 60 * 1000;
 
-function apiRunQueued_(clientId, action, user, run, nowMs) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(API_LOG_SHEET_);
-  if (!sheet) throw new Error('Brak arkusza API_Log — uruchom apiSetup().');
+const API_CLAIM_STALE_MS_ = 7 * 60 * 1000;
+const API_MSG_PENDING_ = 'Zapis w toku. Spróbuj ponownie za chwilę.';
+
+function apiWithLock_(fn) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000); // przy przekroczeniu rzuca wyjątek -> SERVER w routerze
   try {
-    const last = sheet.getLastRow();
-    if (last >= 2) {
-      const ids = sheet.getRange(2, 1, last - 1, 1).getValues(); // tylko kolumna A
-      for (let i = 0; i < ids.length; i++) {
-        if (String(ids[i][0]) === clientId) return JSON.parse(sheet.getRange(i + 2, 5).getValue());
-      }
-    }
-    const resp = run();
-    sheet.appendRow([clientId, new Date(nowMs), user.id, action, JSON.stringify(resp)]);
-    return resp;
+    return fn();
   } finally {
     lock.releaseLock();
   }
+}
+
+// numer wiersza (1-based) wpisu clientId + pracownik albo 0
+function apiFindLogRow_(sheet, clientId, userId) {
+  const last = sheet.getLastRow();
+  if (last < 2) return 0;
+  const keys = sheet.getRange(2, 1, last - 1, 3).getValues(); // kolumny A-C
+  for (let i = 0; i < keys.length; i++) {
+    if (String(keys[i][0]) === clientId && String(keys[i][2]) === String(userId)) return i + 2;
+  }
+  return 0;
+}
+
+// Funkcji GS NIE woła się pod script lockiem (część z nich sama bierze ten lock, a nie jest reentrant).
+// Faza 1 (lock): odczyt/rezerwacja wpisu; faza 2 (bez locka): GS; faza 3 (lock): zapis wyniku.
+function apiRunQueued_(clientId, action, user, run, nowMs) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(API_LOG_SHEET_);
+  if (!sheet) throw new Error('Brak arkusza API_Log — uruchom apiSetup().');
+  const early = apiWithLock_(function () {
+    const row = apiFindLogRow_(sheet, clientId, user.id);
+    if (row) {
+      const stored = sheet.getRange(row, 5).getValue();
+      if (stored !== '' && stored !== null) return JSON.parse(stored);
+      const t = new Date(sheet.getRange(row, 2).getValue()).getTime();
+      if (!isNaN(t) && nowMs - t < API_CLAIM_STALE_MS_) return apiErr_('SERVER', API_MSG_PENDING_);
+      sheet.getRange(row, 2).setValue(new Date(nowMs)); // przeterminowana rezerwacja — przejmujemy
+      return null;
+    }
+    sheet.appendRow([clientId, new Date(nowMs), user.id, action, '']);
+    return null;
+  });
+  if (early) return early;
+
+  let resp;
+  try {
+    resp = run();
+  } catch (err) {
+    apiWithLock_(function () {
+      const row = apiFindLogRow_(sheet, clientId, user.id);
+      if (row) sheet.deleteRow(row); // ponowienie ma wykonać zapis od nowa
+    });
+    throw err;
+  }
+  apiWithLock_(function () {
+    const row = apiFindLogRow_(sheet, clientId, user.id);
+    if (row) sheet.getRange(row, 5).setValue(JSON.stringify(resp));
+    else sheet.appendRow([clientId, new Date(nowMs), user.id, action, JSON.stringify(resp)]);
+  });
+  return resp;
 }
 
 // ---------- konfiguracja (uruchom ręcznie raz z edytora) ----------
@@ -294,10 +336,13 @@ function apiLogCleanup(nowMs) {
     if (last < 2) return;
     const times = sheet.getRange(2, 2, last - 1, 1).getValues();
     const cutoff = nowMs - API_LOG_MAX_AGE_MS_;
-    for (let i = times.length - 1; i >= 0; i--) { // od dołu, żeby numery wierszy się nie przesuwały
-      const t = new Date(times[i][0]).getTime();
-      if (!isNaN(t) && t < cutoff) sheet.deleteRow(i + 2);
+    let k = 0; // wpisy są chronologiczne — przeterminowane tworzą ciągły blok od góry
+    while (k < times.length) {
+      const t = new Date(times[k][0]).getTime();
+      if (isNaN(t) || t >= cutoff) break;
+      k++;
     }
+    if (k > 0) sheet.deleteRows(2, k);
   } finally {
     lock.releaseLock();
   }

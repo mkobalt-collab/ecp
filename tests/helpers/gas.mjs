@@ -50,6 +50,7 @@ function makeSheet(rows) {
     appendRow: (row) => { rows.push(row.slice()); },
     hideSheet: () => { sheet._hidden = true; },
     deleteRow: (i) => { rows.splice(i - 1, 1); },
+    deleteRows: (i, n) => { rows.splice(i - 1, n); },
   };
   return sheet;
 }
@@ -95,12 +96,12 @@ export function loadApi({ sheets = {}, gsFns = {}, props = {}, now = Date.UTC(20
       getScriptLock: () => ({
         waitLock: (ms) => {
           lockState.events.push('wait:' + ms);
-          if (lockState.failWait) throw new Error('Lock timeout');
+          if (lockState.failWait || lockState.held) throw new Error('Lock timeout'); // brak reentrancji
           lockState.held = true;
         },
         tryLock: (ms) => {
           lockState.events.push('try:' + ms);
-          if (lockState.failTry) return false;
+          if (lockState.failTry || lockState.held) return false;
           lockState.held = true;
           return true;
         },

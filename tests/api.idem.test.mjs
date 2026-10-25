@@ -94,9 +94,9 @@ test('ustawStatusUrlopu writes admin name to column K of matching row', () => {
     [1, 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'W-2', ''],
   ];
   const api = setup({ sheets: { Urlopy: urlopy }, gsFns: { ustawStatusUrlopu: () => ({ ok: true }) } });
-  const res = api.handle(req(api, 2, 'ustawStatusUrlopu', { idWniosku: 'W-2', status: 'Zatwierdzony' }));
+  const res = api.handle(req(api, 2, 'ustawStatusUrlopu', { idWniosku: 'W-2', status: 'Zatwierdzone' }));
   assert.equal(res.ok, true);
-  assert.deepEqual(plain(api.calls.ustawStatusUrlopu[0]), ['W-2', 'Zatwierdzony']);
+  assert.deepEqual(plain(api.calls.ustawStatusUrlopu[0]), ['W-2', 'Zatwierdzone']);
   assert.equal(urlopy[2][10], 'Ewa Admin');
   assert.equal(urlopy[1][10], '');
 });
@@ -191,6 +191,7 @@ test('apiSetup keeps existing Rola header, secret and foreign triggers', () => {
   const api = setup({ props: { API_SECRET: 'keep' } });
   api.triggers.push({ getHandlerFunction: () => 'inna' });
   api.raw('apiSetup');
+  assert.equal(api.sheets.Pracownicy.getRange(1, 7).getValue(), 'Rola');
   assert.equal(api.props.API_SECRET, 'keep');
   assert.equal(api.triggers.length, 2);
 });
@@ -209,4 +210,69 @@ test('apiWylogujWszystkich invalidates tokens', () => {
   assert.equal(api.handle({ action: 'init', token: t }).ok, true);
   api.raw('apiWylogujWszystkich');
   assert.equal(api.handle({ action: 'init', token: t }).code, 'AUTH');
+});
+
+test('ustawStatusUrlopu Oczekuje does not write admin name', () => {
+  const urlopy = [['h'], [1, 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'W-2', '']];
+  const api = setup({ sheets: { Urlopy: urlopy }, gsFns: { ustawStatusUrlopu: () => ({ ok: true }) } });
+  assert.equal(api.handle(req(api, 2, 'ustawStatusUrlopu', { idWniosku: 'W-2', status: 'Oczekuje' })).ok, true);
+  assert.equal(urlopy[1][10], '');
+});
+
+test('GS function taking the script lock itself works (no lock held during GS call)', () => {
+  const api = setup();
+  const g = api.ctx;
+  g.zapiszUrlop = () => { const l = g.LockService.getScriptLock(); l.waitLock(15000); l.releaseLock(); return { ok: true, id: 'W-9' }; };
+  const r = req(api, 1, 'zapiszUrlop', {}, { clientId: 'n1' });
+  const a = api.handle(r);
+  assert.equal(a.ok, true);
+  assert.deepEqual(plain(api.handle(r)), plain(a));
+  assert.equal(api.sheets.API_Log._rows.length, 2);
+  assert.equal(api.sheets.API_Log._rows[1][4], JSON.stringify(plain(a)));
+});
+
+test('fresh pending claim → SERVER "w toku", no GS call', () => {
+  const api = setup({ gsFns: { zapiszGodziny: () => ({ ok: true }) } });
+  api.sheets.API_Log._rows.push(['p', new Date(T - 60 * 1000), 1, 'zapiszGodziny', '']);
+  const res = api.handle(req(api, 1, 'zapiszGodziny', {}, { clientId: 'p' }));
+  assert.equal(res.code, 'SERVER');
+  assert.match(res.error, /w toku/);
+  assert.equal(api.calls.zapiszGodziny, undefined);
+});
+
+test('stale pending claim is reclaimed', () => {
+  const api = setup({ gsFns: { zapiszGodziny: () => ({ ok: true, wiersz: 3 }) } });
+  api.sheets.API_Log._rows.push(['p', new Date(T - 8 * 60 * 1000), 1, 'zapiszGodziny', '']);
+  const res = api.handle(req(api, 1, 'zapiszGodziny', {}, { clientId: 'p' }));
+  assert.equal(res.ok, true);
+  assert.equal(api.calls.zapiszGodziny.length, 1);
+  assert.equal(api.sheets.API_Log._rows.length, 2);
+  assert.equal(api.sheets.API_Log._rows[1][1].getTime(), T);
+  assert.ok(api.sheets.API_Log._rows[1][4]);
+});
+
+test('GS throws → claim removed, retry re-runs GS', () => {
+  let n = 0;
+  const api = setup({ gsFns: { zapiszGodziny: () => { if (n++ === 0) throw new Error('boom'); return { ok: true }; } } });
+  const r = req(api, 1, 'zapiszGodziny', {}, { clientId: 'q' });
+  assert.equal(api.handle(r).code, 'SERVER');
+  assert.equal(api.sheets.API_Log._rows.length, 1);
+  assert.equal(api.handle(r).ok, true);
+  assert.equal(api.calls.zapiszGodziny.length, 2);
+});
+
+test('same clientId from a different user is not replayed', () => {
+  const api = setup({ gsFns: { zapiszGodziny: () => ({ ok: true }) } });
+  api.handle(req(api, 1, 'zapiszGodziny', {}, { clientId: 'same' }));
+  api.handle(req(api, 2, 'zapiszGodziny', {}, { clientId: 'same' }));
+  assert.equal(api.calls.zapiszGodziny.length, 2);
+  assert.equal(api.sheets.API_Log._rows.length, 3);
+});
+
+test('lock not held while GS runs', () => {
+  let heldDuring;
+  const api = setup();
+  api.ctx.zapiszGodziny = () => { heldDuring = api.lock.held; return { ok: true }; };
+  api.handle(req(api, 1, 'zapiszGodziny', {}, { clientId: 'h' }));
+  assert.equal(heldDuring, false);
 });
