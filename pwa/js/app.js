@@ -25,6 +25,7 @@ let deviceId = null;
 let pendingCount = 0;
 let loginNote = '';
 let current = null; // { tab, container }
+let swReg = null;
 let ui = {};        // referencje do elementów nagłówka
 
 const ctx = {
@@ -98,6 +99,11 @@ function showLogin(note = '') {
 async function onLoggedIn({ token, user }) {
   const last = await store.kvGet('lastUserId');
   if (last && last !== user.id) { // inny użytkownik na tym urządzeniu — nie mieszamy danych i kolejki
+    const queued = await ctx.sync.list().catch(() => []);
+    if (queued.length && !confirm(`Na urządzeniu są niewysłane wpisy innego użytkownika (${queued.length}). Zalogowanie usunie je. Kontynuować?`)) {
+      showLogin('Logowanie anulowane — najpierw zaloguj się jako poprzedni użytkownik, aby wysłać wpisy.');
+      return;
+    }
     const id = await getDeviceId();
     await store.clearAll();
     await store.kvSet('deviceId', id);
@@ -166,6 +172,7 @@ function buildShell() {
   root.replaceChildren(
     el('header', { class: 'header' }, ui.who, ui.offline, ui.badge, ui.sync, el('div', { class: 'menu-wrap' }, menuBtn, menu)),
     ui.update, ui.main, ui.tabs);
+  offerUpdate();
 }
 
 async function go(tab, prefill) {
@@ -197,6 +204,13 @@ async function manualSync() {
 }
 
 // ---------- start ----------
+function offerUpdate() {
+  const waiting = swReg && swReg.waiting;
+  if (!waiting || !navigator.serviceWorker.controller || !ui.update) return;
+  ui.update.replaceChildren('Nowa wersja — odśwież ', el('button', { type: 'button', onclick: () => waiting.postMessage('skipWaiting') }, 'Odśwież'));
+  ui.update.hidden = false;
+}
+
 function setupSw() {
   if (!('serviceWorker' in navigator)) return;
   const hadController = !!navigator.serviceWorker.controller;
@@ -206,16 +220,12 @@ function setupSw() {
     reloaded = true;
     location.reload();
   });
-  const offer = reg => {
-    if (!reg.waiting || !navigator.serviceWorker.controller || !ui.update) return;
-    ui.update.replaceChildren('Nowa wersja — odśwież ', el('button', { type: 'button', onclick: () => reg.waiting.postMessage('skipWaiting') }, 'Odśwież'));
-    ui.update.hidden = false;
-  };
   navigator.serviceWorker.register('sw.js').then(reg => {
-    offer(reg);
+    swReg = reg;
+    offerUpdate();
     reg.addEventListener('updatefound', () => {
       const w = reg.installing;
-      if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') offer(reg); });
+      if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') offerUpdate(); });
     });
   }).catch(e => console.warn('SW:', e));
 }
