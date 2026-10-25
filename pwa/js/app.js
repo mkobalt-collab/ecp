@@ -32,7 +32,12 @@ const ctx = {
   api: null, sync: null, store, user: null, init: null,
   online: () => navigator.onLine !== false,
   go: (tab, prefill) => go(tab, prefill),
+  // Widok rejestruje sprzątanie (wołane przy przejściu na inną zakładkę) i nasłuch zmian kolejki; zwraca funkcję wyrejestrowującą.
+  onLeave: fn => { leaveFns.add(fn); return () => leaveFns.delete(fn); },
+  onQueueChange: fn => { queueListeners.add(fn); return ctx.onLeave(() => queueListeners.delete(fn)); },
 };
+const leaveFns = new Set();
+const queueListeners = new Set();
 
 async function getDeviceId() {
   if (!deviceId) {
@@ -56,6 +61,7 @@ ctx.sync = createSync({ store, api: ctx.api, onChange: items => updateCounter(it
 const flush = () => ctx.sync.flush().catch(() => {});
 
 function updateCounter(items) {
+  queueListeners.forEach(fn => { try { fn(items); } catch (e) { console.error(e); } });
   pendingCount = items.filter(i => i.status === 'pending' || i.status === 'error').length;
   if (ui.badge) {
     ui.badge.hidden = pendingCount === 0;
@@ -180,6 +186,8 @@ async function go(tab, prefill) {
   const def = TABS.find(t => t.id === tab);
   if (!def || (def.admin && ctx.user.rola !== 'admin')) return;
   const container = el('div');
+  leaveFns.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
+  leaveFns.clear();
   current = { tab, container };
   ui.main.replaceChildren(container);
   ui.tabs.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));

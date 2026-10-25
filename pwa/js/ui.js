@@ -11,11 +11,21 @@ export function el(tag, attrs, ...children) {
     else if (v === true) node.setAttribute(k, '');
     else node.setAttribute(k, v);
   }
-  const add = c => {
-    if (Array.isArray(c)) c.forEach(add);
+  appendAll(node, children);
+  return node;
+}
+
+function appendAll(node, children) {
+  for (const c of children) {
+    if (Array.isArray(c)) appendAll(node, c);
     else if (c !== null && c !== undefined && c !== false) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
-  };
-  children.forEach(add);
+  }
+}
+
+// Zastępuje zawartość węzła (tablice spłaszczane, null/false pomijane, tekst jako text node).
+export function fill(node, ...children) {
+  node.replaceChildren();
+  appendAll(node, children);
   return node;
 }
 
@@ -88,4 +98,78 @@ export async function cachedLoad({ key, action, args = {}, ctx, render, containe
     } else throw e;
   }
   return { data, fresh: false };
+}
+
+export const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+};
+
+// 1.5 -> '1h 30min'
+export function fmtH(h) {
+  const neg = h < 0;
+  h = Math.abs(Number(h) || 0);
+  let g = Math.floor(h), m = Math.round((h - g) * 60);
+  if (m === 60) { g++; m = 0; }
+  return (neg ? '-' : '') + g + 'h' + (m ? ' ' + m + 'min' : '');
+}
+
+// Pole formularza: etykieta + kontrolka (label otacza kontrolkę).
+export const field = (label, control) => el('label', { class: 'fgroup' }, el('span', { class: 'flabel' }, label), control);
+
+export function statusBadge(status) {
+  const [txt, cls] = status === 'Zatwierdzone' ? ['✓ zatw.', 'ok'] : status === 'Odrzucone' ? ['✕ odrz.', 'bad'] : ['⏳ oczek.', 'wait'];
+  return el('span', { class: 'status ' + cls }, txt);
+}
+
+// getMojeWpisy z cache per miesiąc (wspólne dla widoków Urlop i Wpisy).
+export const loadWpisy = (ctx, rok, miesiac, render, container) =>
+  cachedLoad({ key: `wpisy:${rok}-${miesiac}`, action: 'getMojeWpisy', args: { rok, miesiac }, ctx, render, container });
+
+/**
+ * Zapis przez kolejkę: save(args) -> 'sent' | 'queued' | 'error'. Pokazuje toast.
+ * Decyzja online/offline: czy element nadal czeka po próbie natychmiastowej wysyłki.
+ * prefill = {clientId} (poprawa wpisu ❗) -> sync.replace; po błędzie serwera kolejny zapis znów zastępuje ten element.
+ */
+export function createSaver(ctx, action, prefill) {
+  let clientId = prefill ? prefill.clientId : null;
+  return async function save(args) {
+    let item;
+    try {
+      item = clientId ? await ctx.sync.replace(clientId, action, args) : await ctx.sync.enqueue(action, args);
+    } catch (e) { toast('Nie udało się zapisać w telefonie.', 'err'); return 'error'; }
+    clientId = null;
+    try { await ctx.sync.flush(); } catch (e) { /* element zostaje w kolejce */ }
+    const cur = (await ctx.sync.list().catch(() => [])).find(i => i.clientId === item.clientId);
+    if (!cur) { toast('Zapisano'); return 'sent'; }
+    if (cur.status === 'error') { clientId = cur.clientId; toast(cur.error || 'Nie udało się zapisać.', 'err'); return 'error'; }
+    toast('Zapisano w telefonie — wyślę po odzyskaniu internetu');
+    return 'queued';
+  };
+}
+
+// Wspólny szkielet formularza zapisu: przycisk blokowany na czas zapisu, powrót do Wpisów po poprawie wpisu z kolejki.
+export function saveForm({ ctx, prefill, action, title, submitLabel, color, controls, collect, validate, reset, onSaved }) {
+  const save = createSaver(ctx, action, prefill);
+  const msg = el('div', { class: 'msg err', role: 'alert', hidden: true });
+  const btn = el('button', { class: 'btn', type: 'submit', style: color ? `background:${color}` : null }, submitLabel);
+  const form = el('form', { class: 'card', novalidate: true, onsubmit: async e => {
+    e.preventDefault();
+    const args = collect();
+    const bad = validate(args);
+    msg.hidden = !bad;
+    msg.textContent = bad || '';
+    if (bad) return;
+    btn.disabled = true;
+    const out = await save(args);
+    btn.disabled = false;
+    if (out === 'error') return;
+    if (prefill) { ctx.go('wpisy'); return; }
+    reset();
+    if (onSaved) onSaved(out);
+  } },
+  el('div', { class: 'form-title' }, title),
+  prefill && prefill.error ? el('div', { class: 'msg err' }, `Serwer odrzucił wpis: ${prefill.error}`) : null,
+  controls, btn, msg);
+  return form;
 }
