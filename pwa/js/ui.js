@@ -129,6 +129,15 @@ export function statusBadge(status) {
 export const loadWpisy = (ctx, rok, miesiac, render, container) =>
   cachedLoad({ key: `wpisy:${rok}-${miesiac}`, action: 'getMojeWpisy', args: { rok, miesiac }, ctx, render, container });
 
+// Jak FORM: po zapisie godzin pokazujemy wynik z serwera.
+function savedMsg(action, data) {
+  const f = v => (Number(v) || 0).toFixed(2);
+  if (action === 'zapiszGodziny' && data && data.przepracowane !== undefined && data.przepracowane !== null) {
+    return `Zapisano — ${f(data.przepracowane)} h, nadgodziny ${f(data.nadgodziny)} h`;
+  }
+  return 'Zapisano';
+}
+
 /**
  * Zapis przez kolejkę: save(args) -> 'sent' | 'queued' | 'error'. Pokazuje toast.
  * Decyzja online/offline: czy element nadal czeka po próbie natychmiastowej wysyłki.
@@ -144,9 +153,10 @@ export function createSaver(ctx, action, prefill) {
     clientId = null;
     try { await ctx.sync.flush(); } catch (e) { /* element zostaje w kolejce */ }
     const cur = (await ctx.sync.list().catch(() => [])).find(i => i.clientId === item.clientId);
-    if (!cur) { toast('Zapisano'); return 'sent'; }
+    if (!cur) { toast(savedMsg(action, ctx.sync.takeResult(item.clientId))); return 'sent'; }
     if (cur.status === 'error') { clientId = cur.clientId; toast(cur.error || 'Nie udało się zapisać.', 'err'); return 'error'; }
-    toast('Zapisano w telefonie — wyślę po odzyskaniu internetu');
+    // online, a element czeka (np. „Zapis w toku”, błąd serwera) — nie mówimy o braku internetu
+    toast(ctx.online() ? 'Zapisano w telefonie — wyślę, gdy serwer odpowie' : 'Zapisano w telefonie — wyślę po odzyskaniu internetu');
     return 'queued';
   };
 }

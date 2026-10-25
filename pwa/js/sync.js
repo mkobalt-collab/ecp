@@ -7,6 +7,7 @@ export function createSync({ store, api, onChange = () => {}, newId = () => cryp
   let inflight = null;
   let dirty = false;
   let lastTs = 0;
+  const results = new Map(); // clientId -> data z odpowiedzi ok (dla komunikatu po zapisie); ostatnie 20
 
   const list = () => store.outboxList();
   async function notify() {
@@ -26,6 +27,8 @@ export function createSync({ store, api, onChange = () => {}, newId = () => cryp
         throw e;
       }
       if (res && res.ok) {
+        results.set(it.clientId, res.data);
+        if (results.size > 20) results.delete(results.keys().next().value);
         await store.outboxRemove(it.clientId);
         await notify();
       } else if (res && FATAL_ITEM.has(res.code)) {
@@ -74,5 +77,12 @@ export function createSync({ store, api, onChange = () => {}, newId = () => cryp
     return enqueue(action, args);
   }
 
-  return { enqueue, replace, discard, flush, list };
+  // Dane odpowiedzi serwera dla wysłanego elementu (jednorazowo) albo undefined.
+  function takeResult(clientId) {
+    const data = results.get(clientId);
+    results.delete(clientId);
+    return data;
+  }
+
+  return { enqueue, replace, discard, flush, list, takeResult };
 }

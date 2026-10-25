@@ -219,3 +219,16 @@ test('replace elementu w locie, potem REJECTED: zostaje tylko nowy', async () =>
   await sync.flush();
   assert.deepEqual((await sync.list()).map(i => i.clientId), ['new1']);
 });
+
+test('takeResult zwraca dane odpowiedzi serwera dla wysłanego clientId (raz)', async () => {
+  const { sync } = setup(id => ({ ok: true, data: { przepracowane: '8.00', nadgodziny: '0.00', id } }));
+  const item = await sync.enqueue('zapiszGodziny', { data: '2026-10-20' });
+  await settle(sync);
+  assert.deepEqual(sync.takeResult(item.clientId), { przepracowane: '8.00', nadgodziny: '0.00', id: 'id1' });
+  assert.equal(sync.takeResult(item.clientId), undefined); // jednorazowo
+  // element niewysłany (offline) -> brak wyniku
+  const off = setup(() => { throw new NetworkError(); });
+  const it2 = await off.sync.enqueue('zapiszGodziny', {});
+  await settle(off.sync);
+  assert.equal(off.sync.takeResult(it2.clientId), undefined);
+});
