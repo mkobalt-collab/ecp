@@ -130,6 +130,22 @@ function nieobecnosci(ctx, alive, getMonth) {
   } });
 }
 
+// Nadgodziny z wpisów historii: suma za miesiąc (osobno soboty) i lista dni z nadgodzinami.
+function nadgodzinyCard(godziny) {
+  const dni = godziny.filter(x => (parseFloat(x.nadg) || 0) > 0.001);
+  const suma = dni.reduce((s, x) => s + (parseFloat(x.nadg) || 0), 0);
+  const soboty = dni.filter(x => x.sobota).reduce((s, x) => s + (parseFloat(x.nadg) || 0), 0);
+  const tag = x => x.sobota ? ' · sobota' : x.dzienWolny ? ' · dzień wolny' : '';
+  return card(el('div', { class: 'flabel' }, 'Nadgodziny'),
+    dni.length
+      ? [el('div', { class: 'row' }, el('span', { class: 'grow' }, 'Razem w miesiącu: ', el('b', null, fmtH(suma)),
+          soboty > 0.001 ? el('div', { class: 'sub' }, `w tym soboty: ${fmtH(soboty)}`) : null)),
+        ...dni.map(x => el('div', { class: 'row' },
+          el('span', { class: 'grow' }, `${x.data}${tag(x)}`, el('div', { class: 'sub' }, `przepracowane ${fmtH(x.godz)}`)),
+          el('b', null, '+' + fmtH(x.nadg))))]
+      : note('Brak nadgodzin w tym miesiącu.'));
+}
+
 function historia(ctx, alive, getMonth) {
   const select = el('select', { class: 'field' }, el('option', { value: '' }, 'Wczytywanie…'));
   const body = el('div');
@@ -148,6 +164,7 @@ function historia(ctx, alive, getMonth) {
     fill(body,
       card(el('div', { class: 'flabel' }, 'Godziny'), g.length ? g.map(x => el('div', { class: 'row' },
         el('span', { class: 'grow' }, `${x.data} · ${x.od}–${x.do} · `, el('b', null, fmtH(x.godz)), x.nadg > 0.001 ? ` +${fmtH(x.nadg)}` : '', x.uwagi ? el('div', { class: 'sub' }, x.uwagi) : null))) : note('Brak godzin w tym miesiącu.')),
+      nadgodzinyCard(g),
       card(el('div', { class: 'flabel' }, 'Urlopy i nieobecności'), u.length ? u.map(x => el('div', { class: 'row' },
         el('span', { class: 'grow' }, x.typUrlopu, el('div', { class: 'sub' }, `${x.dataOd} – ${x.dataDo} · ${x.dni} dni${x.uwagi ? ' · ' + x.uwagi : ''}`)), statusBadge(x.status))) : note('Brak nieobecności w tym miesiącu.')));
   }

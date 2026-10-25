@@ -23,6 +23,9 @@ const err = (code, error) => ({ ok: false, code, error });
 const num = (v, d = 0) => parseFloat(v) || d;
 const hm = s => { const [h, m] = String(s).split(':').map(Number); return h * 60 + (m || 0); };
 const hours = (od, doo) => { let m = hm(doo) - hm(od); if (m < 0) m += 1440; return m / 60; };
+// jak GS nadgodzinyDnia: sobota = wszystkie godziny, inne dni = ponad normę
+const isSat = iso => new Date(iso + 'T12:00:00Z').getUTCDay() === 6;
+const nadg = (iso, h) => isSat(iso) ? h : Math.max(0, h - NAD);
 const inMonth = (s, rok, mies) => { const d = new Date(s); return d.getFullYear() === +rok && d.getMonth() === +mies - 1; };
 const NAD = 8;
 
@@ -92,8 +95,8 @@ const ACTIONS = {
   init: { role: 'user', run: (u) => ({ user: u, typyNieobecnosci: TYPY_NIEOB, typyWyjsc: TYPY_WYJ }) },
   zapiszGodziny: { role: 'user', queued: true, run: (u, a, req) => zapisz(req, u, a => {
     const h = hours(a.godzOd, a.godzDo);
-    state.godziny.push({ wiersz: state.nextRow++, pid: u.id, data: a.data, od: a.godzOd, do: a.godzDo, przepracowane: +h.toFixed(2), nadgodziny: +Math.max(0, h - NAD).toFixed(2), projekt: a.projekt || '', uwagi: a.uwagi || '' });
-    return { przepracowane: h.toFixed(2), nadgodziny: Math.max(0, h - NAD).toFixed(2) };
+    state.godziny.push({ wiersz: state.nextRow++, pid: u.id, data: a.data, od: a.godzOd, do: a.godzDo, przepracowane: +h.toFixed(2), nadgodziny: +nadg(a.data, h).toFixed(2), projekt: a.projekt || '', uwagi: a.uwagi || '' });
+    return { przepracowane: h.toFixed(2), nadgodziny: nadg(a.data, h).toFixed(2) };
   }, godzinyCheck) },
   zapiszUrlop: { role: 'user', queued: true, run: (u, a, req) => zapisz(req, u, a => {
     const dni = dniRobocze(a.dataOd, a.dataDo);
@@ -207,7 +210,7 @@ const ACTIONS = {
   getHistoriaPracownika: { role: 'admin', run: (a, args) => {
     const fd = s => s.split('-').reverse().join('.');
     const godziny = state.godziny.filter(g => g.pid === args.pracownikId && inMonth(g.data, args.rok, args.miesiac))
-      .map(g => ({ typ: 'praca', data: fd(g.data), od: g.od, do: g.do, godz: g.przepracowane, nadg: g.nadgodziny, uwagi: g.uwagi, dzienWolny: false, sobota: false }));
+      .map(g => ({ typ: 'praca', data: fd(g.data), od: g.od, do: g.do, godz: g.przepracowane, nadg: g.nadgodziny, uwagi: g.uwagi, dzienWolny: false, sobota: isSat(g.data) }));
     const urlopy = state.nieob.filter(n => n.pid === args.pracownikId && (inMonth(n.dataOd, args.rok, args.miesiac) || inMonth(n.dataDo, args.rok, args.miesiac)))
       .map(n => ({ typ: 'urlop', typUrlopu: n.typ, dataOd: fd(n.dataOd), dataDo: fd(n.dataDo), dni: n.dni, uwagi: n.uwagi, status: n.status, wiersz: n.wiersz, id: n.id, decyzjaKto: '', decyzjaKiedy: '' }));
     return { godziny, urlopy };
