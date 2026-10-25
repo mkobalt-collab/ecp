@@ -108,3 +108,37 @@ test('GS {ok:false} without error gets fallback message', () => {
   assert.deepEqual(api.handle({ action: 'getMojeWpisy', token: t, args: {} }),
     { ok: false, code: 'REJECTED', error: 'Operacja odrzucona.' });
 });
+
+test('lock acquired and released around login', () => {
+  const api = setup();
+  login(api, '1111', 'A');
+  assert.deepEqual(api.lock.events, ['try:10000', 'release']);
+  assert.equal(api.lock.held, false);
+});
+
+test('lock released when weryfikujPin throws', () => {
+  const api = setup({ weryfikujPin: () => { throw new Error('boom'); } });
+  const orig = console.error; console.error = () => {};
+  let r;
+  try { r = login(api, '1111', 'A'); } finally { console.error = orig; }
+  assert.equal(r.code, 'SERVER');
+  assert.equal(api.lock.held, false);
+  assert.equal(api.lock.events.at(-1), 'release');
+});
+
+test('tryLock failure -> SERVER, counters untouched, no release', () => {
+  const api = setup();
+  api.lock.failTry = true;
+  const r = login(api, '0000', 'A');
+  assert.deepEqual(r, { ok: false, code: 'SERVER', error: 'Serwer jest zajęty. Spróbuj ponownie.' });
+  assert.equal(api.cache.size, 0);
+  assert.equal(api.calls.weryfikujPin, undefined);
+  assert.ok(!api.lock.events.includes('release'));
+});
+
+test('pin matches but user missing in sheet -> failure counted', () => {
+  const api = setup({ weryfikujPin: () => ({ id: 99 }) });
+  assert.equal(login(api, '1234', 'A').code, 'REJECTED');
+  assert.equal(api.cache.get('api_fail_dev_A').v, '1');
+  assert.equal(api.cache.get('api_fail_all').v, '1');
+});

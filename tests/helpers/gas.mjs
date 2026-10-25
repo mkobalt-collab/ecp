@@ -55,6 +55,7 @@ export function loadApi({ sheets = {}, gsFns = {}, props = {}, now = Date.UTC(20
   for (const [name, rows] of Object.entries(sheets)) sheetObjs[name] = makeSheet(rows);
   const propStore = { ...props };
   const cacheStore = new Map(); // key -> {v, exp}
+  const lockState = { held: false, failTry: false, events: [] };
 
   const ss = {
     getSheetByName: (n) => sheetObjs[n] || null,
@@ -85,7 +86,15 @@ export function loadApi({ sheets = {}, gsFns = {}, props = {}, now = Date.UTC(20
     },
     LockService: {
       getScriptLock: () => ({
-        waitLock: () => {}, tryLock: () => true, releaseLock: () => {}, hasLock: () => true,
+        waitLock: () => { lockState.events.push('wait'); lockState.held = true; },
+        tryLock: (ms) => {
+          lockState.events.push('try:' + ms);
+          if (lockState.failTry) return false;
+          lockState.held = true;
+          return true;
+        },
+        releaseLock: () => { lockState.events.push('release'); lockState.held = false; },
+        hasLock: () => lockState.held,
       }),
     },
     Utilities: {
@@ -135,7 +144,7 @@ export function loadApi({ sheets = {}, gsFns = {}, props = {}, now = Date.UTC(20
 
   const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   return {
-    ctx, calls, triggers, clock, sheets: sheetObjs, props: propStore, cache: cacheStore,
+    ctx, calls, triggers, clock, lock: lockState, sheets: sheetObjs, props: propStore, cache: cacheStore,
     eval: (code) => vm.runInContext(code, ctx),
     // woła globalną funkcję/const z api.gs; wynik klonowany do obiektów z głównego realmu
     call: (fn, ...args) => clone(vm.runInContext(fn, ctx)(...args)),

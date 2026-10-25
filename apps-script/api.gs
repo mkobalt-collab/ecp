@@ -139,6 +139,17 @@ function apiNormDevice_(deviceId) {
 }
 
 function apiLogin_(args, deviceId, nowMs) {
+  // sekcja krytyczna: żądania GAS idą równolegle, a liczniki muszą być atomowe
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return apiErr_('SERVER', 'Serwer jest zajęty. Spróbuj ponownie.');
+  try {
+    return apiLoginLocked_(args, deviceId, nowMs);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function apiLoginLocked_(args, deviceId, nowMs) {
   const cache = CacheService.getScriptCache();
   const devKey = 'api_fail_dev_' + apiNormDevice_(deviceId);
   const allKey = 'api_fail_all';
