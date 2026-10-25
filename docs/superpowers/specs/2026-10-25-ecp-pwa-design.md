@@ -223,9 +223,22 @@ pasek „Nowa wersja — odśwież”.
 
 1. **Apps Script**: dodaj plik `api.gs` (wkleić z `apps-script/api.gs`), uruchom raz
    `apiSetup()` (nagłówek „Rola”, arkusz `API_Log`, sekret), wpisz `admin` w kol. G przy
-   swoim wierszu. Wdrożenie: *Zarządzaj wdrożeniami → edytuj istniejące → Nowa wersja*
-   (adres `/exec` się nie zmienia) albo nowe wdrożenie: „Wykonaj jako: ja”,
-   „Dostęp: każdy”.
+   swoim wierszu. Wdrożenie: **osobne, nowe wdrożenie** (*Wdróż → Nowe wdrożenie →
+   Aplikacja internetowa*, „Wykonaj jako: ja”, „Dostęp: każdy”) z własnym adresem `/exec`
+   tylko dla aplikacji mobilnej. Istniejącego wdrożenia (link używany dziś przez
+   pracowników) **nie edytujemy** — zostaje przypięte do swojej wersji i działa jak dotąd.
+
+   Wpływ na obecny system (sprawdzone w kodzie):
+   - `api.gs` dodaje wyłącznie nowe funkcje z prefiksem `api…` i `doPost` — w projekcie
+     nie ma dziś `doPost` ani funkcji o tych nazwach; istniejące funkcje nie są zmieniane.
+   - Nowa kolumna G „Rola” w `Pracownicy`: obecny kod czyta tylko kolumny A–F po indeksie,
+     więc dodatkowa kolumna nic nie zmienia.
+   - Ukryty arkusz `API_Log`: żaden istniejący kod nie przechodzi po wszystkich arkuszach;
+     `onEdit` reaguje tylko na arkusz `Urlopy` i tylko na ręczne edycje.
+   - Wspólne limity (czas wykonania, wysyłka maili) dzielone z obecnymi stronami —
+     przy tej skali bez znaczenia.
+   - Wycofanie: usunięcie wdrożenia mobilnego i pliku `api.gs` przywraca stan sprzed zmian
+     (kolumna G i `API_Log` mogą zostać lub zostać usunięte ręcznie).
 2. **GitHub Pages**: repozytorium z tym projektem; workflow GitHub Actions publikuje
    folder `pwa/`. Uwaga: przy darmowym koncie repozytorium z GitHub Pages musi być
    **publiczne** — dlatego do repozytorium trafia tylko `pwa/`, `apps-script/api.gs`
