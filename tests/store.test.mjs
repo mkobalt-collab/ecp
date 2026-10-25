@@ -55,3 +55,8 @@ test('clearAll czyści wszystkie magazyny', async () => {
   assert.equal(await store.cacheGet('x'), undefined);
   assert.equal(await store.kvGet('k'), undefined);
 });
+
+test('duplikat outboxAdd odrzuca z niepustym błędem', async () => {
+  await store.outboxAdd(item('a', 1));
+  await assert.rejects(store.outboxAdd(item('a', 2)), err => err != null && typeof err === 'object');
+});

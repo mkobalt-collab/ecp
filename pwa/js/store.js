@@ -5,14 +5,20 @@ let dbPromise = null;
 function open() {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 1);
+      let req;
+      try { req = indexedDB.open(DB_NAME, 1); } catch (e) { dbPromise = null; reject(e); return; }
       req.onupgradeneeded = () => {
         const db = req.result;
         db.createObjectStore('outbox', { keyPath: 'clientId' });
         db.createObjectStore('cache', { keyPath: 'key' });
         db.createObjectStore('kv', { keyPath: 'k' });
       };
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        const db = req.result;
+        db.onversionchange = () => { db.close(); dbPromise = null; };
+        db.onclose = () => { dbPromise = null; };
+        resolve(db);
+      };
       req.onerror = () => { dbPromise = null; reject(req.error); };
     });
   }
@@ -25,8 +31,8 @@ async function run(storeName, mode, fn) {
     const tx = db.transaction(storeName, mode);
     const result = fn(tx.objectStore(storeName));
     tx.oncomplete = () => resolve(result && 'result' in result ? result.result : undefined);
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
+    tx.onerror = e => reject((e && e.target && e.target.error) || tx.error);
+    tx.onabort = () => reject(tx.error || new Error('Transakcja przerwana.'));
   });
 }
 
@@ -54,7 +60,7 @@ export async function clearAll() {
     const tx = db.transaction(['outbox', 'cache', 'kv'], 'readwrite');
     for (const n of ['outbox', 'cache', 'kv']) tx.objectStore(n).clear();
     tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
+    tx.onerror = e => reject((e && e.target && e.target.error) || tx.error);
+    tx.onabort = () => reject(tx.error || new Error('Transakcja przerwana.'));
   });
 }
