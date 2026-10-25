@@ -120,7 +120,7 @@ Pracownik (i admin):
 | Akcja | Funkcja GS | Offline (kolejka) |
 |---|---|---|
 | `init` | `getTypyNieobecnosci`, `getTypyWyjsc` + dane użytkownika | — |
-| `zapiszGodziny` | `zapiszGodziny` | tak |
+| `zapiszGodziny` | `sprawdzDuplikat(id, data)` (jak FORM: drugi wpis na ten dzień → `REJECTED` „Masz już wpis na ten dzień…”), potem `zapiszGodziny` | tak |
 | `zapiszUrlop` | `zapiszUrlop` | tak |
 | `zapiszWyjscie` | `zapiszWyjscie` | tak |
 | `getMojeWpisy` | `getMojeWpisy(id, rok, miesiac)` | cache |
@@ -186,18 +186,23 @@ Pliki:
 - `sync.js` — wysyłanie kolejki (start aplikacji, zdarzenie `online`, co 60 s gdy są
   wpisy, przycisk „Synchronizuj”);
 - `views/*.js` — ekrany pracownika i admina;
-- `karta.js` — podgląd i pobieranie PDF (base64 → Blob → `navigator.share` lub otwarcie);
+- `pdf.js` — PDF w dwóch krokach: generowanie trwa 5–60 s, a po tym czasie przeglądarka blokuje
+  `navigator.share` / `window.open` (wygasła aktywacja), więc po nadejściu pliku pokazujemy pasek
+  „Otwórz / Udostępnij PDF (nazwa)”; jego stuknięcie udostępnia plik albo otwiera go w nowej karcie;
 - `sw.js` — service worker (pliki aplikacji w cache, wersjonowanie);
 - `manifest.webmanifest`, `icons/` (192, 512, maskable, apple-touch-icon).
 
 ### 6.1 Ekrany
 
 **Logowanie** — klawiatura numeryczna, PIN; sesja zapamiętana 30 dni; „Wyloguj” w menu.
+Start z zapisaną sesją: powłoka i zakładki od razu z zapisanego `init`, świeży `init` w tle
+(zmiana roli przebudowuje zakładki); bez zapisanego `init` — powłoka z „Wczytywanie...”.
 
 **Pracownik** (dolny pasek):
 
 1. **⏱ Godziny** — data (domyślnie dziś), od–do, projekt, uwagi; po zapisie
-   przepracowane/nadgodziny. Baner „Brakujące dni” — tap ustawia datę.
+   przepracowane/nadgodziny („Zapisano — 8.00 h, nadgodziny 0.00 h”, gdy wysłano od razu).
+   „Do” wcześniejsze niż „od” = praca przez północ (po potwierdzeniu; GS liczy +24 h), także w korekcie. Baner „Brakujące dni” — tap ustawia datę.
 2. **🏖 NB/Urlop** — typ, zakres dat, uwagi; saldo urlopowe; lista wniosków ze statusem.
 3. **🕐 Wyjścia** — wyjście prywatne / odpracowanie, data, od–do, uwagi; saldo.
 4. **📋 Moje wpisy** — miesiąc ← →; godziny, nieobecności, wyjścia; korekta i usuwanie
