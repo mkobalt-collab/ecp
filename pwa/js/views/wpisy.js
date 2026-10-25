@@ -46,7 +46,7 @@ export function mount(container, ctx, prefill) {
 
   // ---- operacje online ----
   async function run(action, args) {
-    busy++; renderMonth();
+    busy++; editing = null; renderMonth();
     try {
       const res = await ctx.api.call(action, args);
       if (res.ok) { fresh = false; return true; }
@@ -73,7 +73,7 @@ export function mount(container, ctx, prefill) {
       renderMonth();
     };
     return el('div', { class: 'row' }, el('span', { class: 'grow' }, fmtDate(g.data)),
-      el('div', { class: 'edit' }, od, doo, uw, sbtn('Zapisz', () => save().catch(() => toast('Nie udało się zapisać.', 'err'))), sbtn('Anuluj', () => { editing = null; renderMonth(); })));
+      el('div', { class: 'edit' }, od, doo, uw, sbtn('Zapisz', () => save().catch(() => toast('Nie udało się zapisać.', 'err')), {}, { disabled: rowLocked() }), sbtn('Anuluj', () => { editing = null; renderMonth(); })));
   }
 
   // ---- miesiąc ----
@@ -101,7 +101,7 @@ export function mount(container, ctx, prefill) {
   }
   async function load() {
     const seq = ++loadSeq;
-    fresh = false; renderMonth();
+    fresh = false; editing = null; renderMonth();
     const mine = () => seq === loadSeq && container.isConnected;
     await loadWpisy(ctx, rok, miesiac, (d, { note, stale }) => { if (mine()) { month = d; fresh = !stale; renderMonth(note); } }, body).catch(() => {});
   }
@@ -114,7 +114,7 @@ export function mount(container, ctx, prefill) {
     } catch (e) { toast(e instanceof NetworkError ? 'Wymaga internetu.' : 'Nie udało się otworzyć karty.', 'err'); }
     pdf.disabled = needNet();
   } }, 'Moja karta PDF');
-  const syncNet = () => { if (container.isConnected) { pdf.disabled = needNet(); pdf.title = needNet() ? 'Wymaga internetu' : ''; if (editing === null) renderMonth(); } };
+  const syncNet = () => { if (container.isConnected) { pdf.disabled = needNet(); pdf.title = needNet() ? 'Wymaga internetu' : ''; if (!fresh && !needNet() && editing === null) load(); else if (editing === null) renderMonth(); } };
   window.addEventListener('online', syncNet); window.addEventListener('offline', syncNet);
   ctx.onLeave(() => { window.removeEventListener('online', syncNet); window.removeEventListener('offline', syncNet); });
 
