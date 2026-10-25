@@ -1,4 +1,4 @@
-import { el, fill, field, todayIso, cachedLoad, saveForm } from '../ui.js';
+import { el, fill, field, todayIso, cachedLoad, saveForm, confirmOvernight } from '../ui.js';
 
 export function mount(container, ctx, prefill) {
   const a = (prefill && prefill.args) || {};
@@ -22,7 +22,8 @@ export function mount(container, ctx, prefill) {
     ctx, prefill, action: 'zapiszGodziny', title: 'Zgłoś dzień pracy', submitLabel: 'Zapisz godziny',
     controls: [field('Data', data), el('div', { class: 'row2' }, field('Godz. od', od), field('Godz. do', doo)), field('Uwagi', uwagi)],
     collect: () => ({ data: data.value, godzOd: od.value, godzDo: doo.value, projekt: '', uwagi: uwagi.value.trim() }),
-    validate: v => !v.data || !v.godzOd || !v.godzDo ? 'Wypełnij datę i godziny.' : v.godzDo <= v.godzOd ? 'Godzina „do” musi być późniejsza niż „od”.' : '',
+    validate: v => !v.data || !v.godzOd || !v.godzDo ? 'Wypełnij datę i godziny.' : v.godzDo === v.godzOd ? 'Godzina „do” musi być późniejsza niż „od”.' : '',
+    confirmSave: v => confirmOvernight(v.godzOd, v.godzDo),
     reset: () => { uwagi.value = ''; },
     onSaved: () => { loadMissing(); },
   });

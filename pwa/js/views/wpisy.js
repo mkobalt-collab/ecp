@@ -1,4 +1,4 @@
-import { el, fill, toast, fmtDate, fmtH, monthPicker, statusBadge, loadWpisy, p2 } from '../ui.js';
+import { el, fill, toast, fmtDate, fmtH, monthPicker, statusBadge, loadWpisy, p2, confirmOvernight } from '../ui.js';
 import { offerPdf } from '../pdf.js';
 import { NetworkError } from '../api.js';
 
@@ -67,7 +67,8 @@ export function mount(container, ctx, prefill) {
     const uw = el('input', { class: 'field', type: 'text', value: g.uwagi || '', placeholder: 'uwagi', style: 'flex-basis:100%' });
     const save = async () => {
       if (!od.value || !doo.value) { toast('Uzupełnij godziny.', 'err'); return; }
-      if (doo.value <= od.value) { toast('Godzina „do” musi być późniejsza niż „od”.', 'err'); return; }
+      if (doo.value === od.value) { toast('Godzina „do” musi być późniejsza niż „od”.', 'err'); return; }
+      if (!confirmOvernight(od.value, doo.value)) return;
       editing = null;
       await run('korygujGodziny', { wiersz: g.wiersz, godzOd: od.value, godzDo: doo.value, uwagi: uw.value.trim() });
       renderMonth();

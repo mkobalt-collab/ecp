@@ -115,6 +115,9 @@ export function fmtH(h) {
 }
 
 // Pole formularza: etykieta + kontrolka (label otacza kontrolkę).
+// Praca przez północ (jak GS godzinyMiedzy: do < od = +24 h). do == od odrzucane przez walidację.
+export const confirmOvernight = (od, doo) => !(doo < od) || confirm('Praca przez północ? Zakończenie ' + doo + ' następnego dnia.');
+
 export const field = (label, control) => el('label', { class: 'fgroup' }, el('span', { class: 'flabel' }, label), control);
 
 export function statusBadge(status) {
@@ -149,7 +152,8 @@ export function createSaver(ctx, action, prefill) {
 }
 
 // Wspólny szkielet formularza zapisu: przycisk blokowany na czas zapisu, powrót do Wpisów po poprawie wpisu z kolejki.
-export function saveForm({ ctx, prefill, action, title, submitLabel, color, controls, collect, validate, reset, onSaved }) {
+// confirmSave(args) -> false przerywa zapis bez komunikatu (np. odmowa w confirm()).
+export function saveForm({ ctx, prefill, action, title, submitLabel, color, controls, collect, validate, confirmSave, reset, onSaved }) {
   const save = createSaver(ctx, action, prefill);
   const msg = el('div', { class: 'msg err', role: 'alert', hidden: true });
   const btn = el('button', { class: 'btn', type: 'submit', style: color ? `background:${color}` : null }, submitLabel);
@@ -160,6 +164,7 @@ export function saveForm({ ctx, prefill, action, title, submitLabel, color, cont
     msg.hidden = !bad;
     msg.textContent = bad || '';
     if (bad) return;
+    if (confirmSave && !confirmSave(args)) return;
     btn.disabled = true;
     const out = await save(args);
     btn.disabled = false;
