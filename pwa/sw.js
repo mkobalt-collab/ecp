@@ -9,7 +9,8 @@ const PRECACHE = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE)));
+  // cache:'reload' omija cache HTTP (GitHub Pages max-age=600) — nowa VERSION nie zapisze starych plików
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE.map(u => new Request(u, { cache: 'reload' })))));
 });
 
 self.addEventListener('activate', e => {
