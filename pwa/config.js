@@ -1,1 +1,1 @@
-export const API_URL = location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? '/api' : 'WKLEJ_ADRES_EXEC';
+export const API_URL = location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? '/api' : 'https://script.google.com/macros/s/AKfycbxdmMSV5WuE5LQcPXBsJ6i5mv5C2QXCh3CEA7eIuXCaE18oV5Fuv-3sbdXtVDVCFezeYg/exec';
