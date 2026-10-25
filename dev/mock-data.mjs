@@ -65,18 +65,27 @@ function login(args, deviceId) {
   return ok({ token: 'mock-' + u.id, user: u });
 }
 
-function zapisz(req, user, run) {
+// check(a) -> komunikat błędu merytorycznego albo null (jak {ok:false,error} z GS)
+function zapisz(req, user, run, check = defaultCheck) {
   const cid = req.clientId;
   if (typeof cid !== 'string' || !cid.trim()) return err('BAD_REQUEST', 'Brak identyfikatora zapisu.');
   const k = user.id + '|' + cid;
   if (state.seen.has(k)) return state.seen.get(k);
   const a = req.args || {};
-  let res;
-  if (a.uwagi === 'ODRZUC' || (a.godzOd && a.godzDo && a.godzOd >= a.godzDo)) {
-    res = err('REJECTED', 'Godzina zakończenia musi być późniejsza niż rozpoczęcia.');
-  } else res = ok(run(a));
+  const msg = a.uwagi === 'ODRZUC' ? 'Godzina zakończenia musi być późniejsza niż rozpoczęcia.' : check(a, user);
+  const res = msg ? err('REJECTED', msg) : ok(run(a));
   state.seen.set(k, res);
   return res;
+}
+
+function defaultCheck(a) {
+  return a.godzOd && a.godzDo && a.godzOd >= a.godzDo ? 'Godzina zakończenia musi być późniejsza niż rozpoczęcia.' : null;
+}
+// Godziny jak GS: do < od = praca przez północ (+24 h); do == od odrzucone; jeden wpis na dzień (sprawdzDuplikat)
+function godzinyCheck(a, u) {
+  if (state.godziny.some(g => g.pid === u.id && g.data === a.data)) return 'Masz już wpis na ten dzień. Skontaktuj się z administratorem w celu korekty.';
+  if (!(hours(a.godzOd, a.godzDo) > 0)) return 'Godzina zakończenia musi być późniejsza niż rozpoczęcia.';
+  return null;
 }
 
 const ACTIONS = {
@@ -85,7 +94,7 @@ const ACTIONS = {
     const h = hours(a.godzOd, a.godzDo);
     state.godziny.push({ wiersz: state.nextRow++, pid: u.id, data: a.data, od: a.godzOd, do: a.godzDo, przepracowane: +h.toFixed(2), nadgodziny: +Math.max(0, h - NAD).toFixed(2), projekt: a.projekt || '', uwagi: a.uwagi || '' });
     return { przepracowane: h.toFixed(2), nadgodziny: Math.max(0, h - NAD).toFixed(2) };
-  }) },
+  }, godzinyCheck) },
   zapiszUrlop: { role: 'user', queued: true, run: (u, a, req) => zapisz(req, u, a => {
     const dni = dniRobocze(a.dataOd, a.dataDo);
     const wiersz = state.nextRow++;
@@ -149,7 +158,7 @@ const ACTIONS = {
     const g = state.godziny.find(x => x.wiersz === a.wiersz && x.pid === u.id);
     if (!g) return { ok: false, error: 'Brak dostępu do tego wpisu.' };
     const h = hours(a.godzOd, a.godzDo);
-    if (!(h > 0) || a.godzOd >= a.godzDo) return { ok: false, error: 'Godzina zakończenia musi być późniejsza niż rozpoczęcia.' };
+    if (!(h > 0)) return { ok: false, error: 'Godzina zakończenia musi być późniejsza niż rozpoczęcia.' };
     Object.assign(g, { od: a.godzOd, do: a.godzDo, przepracowane: +h.toFixed(2), nadgodziny: +Math.max(0, h - NAD).toFixed(2), uwagi: a.uwagi || '' });
     return { ok: true, przepracowane: h.toFixed(2), nadgodziny: Math.max(0, h - NAD).toFixed(2) };
   } },

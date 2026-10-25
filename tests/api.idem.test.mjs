@@ -20,7 +20,7 @@ function setup({ gsFns = {}, sheets = {}, props } = {}) {
       API_Log: [LOG_HEADER],
       ...sheets,
     },
-    gsFns,
+    gsFns: { sprawdzDuplikat: () => false, ...gsFns },
   });
 }
 const plain = (v) => JSON.parse(JSON.stringify(v)); // wynik z realmu vm -> zwykłe obiekty
@@ -292,4 +292,39 @@ test('lock not held while GS runs', () => {
   api.ctx.zapiszGodziny = () => { heldDuring = api.lock.held; return { ok: true }; };
   api.handle(req(api, 1, 'zapiszGodziny', {}, { clientId: 'h' }));
   assert.equal(heldDuring, false);
+});
+
+const DUP_MSG = 'Masz już wpis na ten dzień. Skontaktuj się z administratorem w celu korekty.';
+
+function dupSetup() {
+  const saved = []; // [pracownikId, data] jak w arkuszu Godziny
+  return setup({
+    gsFns: {
+      sprawdzDuplikat: (id, data) => saved.some(([i, d]) => String(i) === String(id) && d === data),
+      zapiszGodziny: (d) => { saved.push([d.pracownikId, d.data]); return { ok: true, przepracowane: 8, nadgodziny: 0 }; },
+    },
+  });
+}
+
+test('zapiszGodziny: second entry for the same day (other clientId) → REJECTED, logged', () => {
+  const api = dupSetup();
+  const args = { data: '2026-10-20', godzOd: '08:00', godzDo: '16:00' };
+  assert.equal(api.handle(req(api, 1, 'zapiszGodziny', args, { clientId: 'd1' })).ok, true);
+  const r2 = api.handle(req(api, 1, 'zapiszGodziny', { ...args, godzDo: '17:00' }, { clientId: 'd2' }));
+  assert.deepEqual(r2, { ok: false, code: 'REJECTED', error: DUP_MSG });
+  assert.equal(api.calls.zapiszGodziny.length, 1);
+  assert.deepEqual(plain(api.calls.sprawdzDuplikat[1]), [1, '2026-10-20']); // id z tokenu
+  const logged = api.sheets.API_Log._rows.find((r) => r[0] === 'd2');
+  assert.deepEqual(JSON.parse(logged[4]), r2);
+  // inny pracownik ten sam dzień — ok
+  assert.equal(api.handle(req(api, 2, 'zapiszGodziny', args, { clientId: 'd3' })).ok, true);
+});
+
+test('zapiszGodziny: replay of the same clientId returns the stored ok (not the duplicate error)', () => {
+  const api = dupSetup();
+  const r = req(api, 1, 'zapiszGodziny', { data: '2026-10-20', godzOd: '08:00', godzDo: '16:00' }, { clientId: 'same-day' });
+  const a = api.handle(r);
+  assert.equal(a.ok, true);
+  assert.deepEqual(api.handle(r), a);
+  assert.equal(api.calls.zapiszGodziny.length, 1);
 });

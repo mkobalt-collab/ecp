@@ -7,6 +7,7 @@
 const API_SHEET_PRAC_ = 'Pracownicy';
 const API_TOKEN_TTL_MS_ = 30 * 24 * 60 * 60 * 1000;
 const API_MSG_SERVER_ = 'Błąd serwera. Spróbuj ponownie.';
+const API_MSG_DUPLIKAT_ = 'Masz już wpis na ten dzień. Skontaktuj się z administratorem w celu korekty.';
 
 // ---------- sekret i token ----------
 
@@ -163,7 +164,11 @@ const API_ACTIONS_ = {
       return { user: user, typyNieobecnosci: getTypyNieobecnosci(), typyWyjsc: getTypyWyjsc() };
     },
   },
-  zapiszGodziny: apiQueuedAct_(function (d) { return zapiszGodziny(d); }),
+  zapiszGodziny: apiQueuedAct_(function (d) {
+    // jak FORM: jeden wpis na dzień (sprawdzDuplikat przed zapiszGodziny); faza 2, bez locka
+    if (sprawdzDuplikat(d.pracownikId, d.data)) return { ok: false, error: API_MSG_DUPLIKAT_ };
+    return zapiszGodziny(d);
+  }),
   zapiszUrlop: apiQueuedAct_(function (d) { return zapiszUrlop(d); }),
   zapiszWyjscie: apiQueuedAct_(function (d) { return zapiszWyjscie(d); }),
   getMojeWpisy: apiUserAct_(function (id, a) { return getMojeWpisy(id, a.rok, a.miesiac); }),
