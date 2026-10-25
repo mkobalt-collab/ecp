@@ -1,6 +1,6 @@
 # Aplikacja GROUP-ON-VET do ewidencji czasu pracy: instalacja
 
-Link do aplikacji: **WKLEJ_LINK_DO_APLIKACJI**
+Link do aplikacji: **https://mkobalt-collab.github.io/ecp/**
 
 Aplikację instalujesz raz, tak jak zwykłą aplikację z ekranu telefonu. Potem działa też bez internetu.
 
