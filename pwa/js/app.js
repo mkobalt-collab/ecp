@@ -21,6 +21,8 @@ const VIEWS = {
 };
 
 const root = document.getElementById('app');
+const NOT_CONFIGURED = String(API_URL).includes('WKLEJ_ADRES_EXEC');
+const MSG_NOT_CONFIGURED = 'Aplikacja nie jest skonfigurowana — brak adresu serwera.';
 let deviceId = null;
 let pendingCount = 0;
 let loginNote = '';
@@ -73,6 +75,7 @@ function updateCounter(items) {
 function showLogin(note = '') {
   current = null;
   ui = {};
+  if (NOT_CONFIGURED) note = '';
   const msg = el('div', { class: note ? 'msg info' : '', role: 'alert' }, note);
   const input = el('input', { class: 'pin-input', type: 'password', inputmode: 'numeric', pattern: '[0-9]*', autocomplete: 'off', maxlength: '8', 'aria-label': 'PIN', placeholder: '••••' });
   const btn = el('button', { class: 'btn', type: 'submit' }, 'Zaloguj');
@@ -80,6 +83,7 @@ function showLogin(note = '') {
     e.preventDefault();
     const pin = input.value.trim();
     if (!pin) return;
+    if (NOT_CONFIGURED) { msg.className = 'msg err'; msg.textContent = MSG_NOT_CONFIGURED; return; }
     btn.disabled = true;
     msg.className = '';
     msg.textContent = '';
@@ -99,6 +103,7 @@ function showLogin(note = '') {
   root.replaceChildren(
     el('div', { class: 'login-head' }, el('h1', null, 'Ewidencja czasu pracy'), el('p', null, 'GROUP-ON-VET')),
     el('div', { class: 'login-wrap' }, form));
+  if (NOT_CONFIGURED) { msg.className = 'msg err'; msg.textContent = MSG_NOT_CONFIGURED; }
   input.focus();
 }
 
