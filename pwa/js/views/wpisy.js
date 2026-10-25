@@ -1,5 +1,5 @@
 import { el, fill, toast, fmtDate, fmtH, monthPicker, statusBadge, loadWpisy, p2 } from '../ui.js';
-import { openPdf } from '../pdf.js';
+import { offerPdf } from '../pdf.js';
 import { NetworkError } from '../api.js';
 
 const TAB_FOR = { zapiszGodziny: 'godziny', zapiszUrlop: 'urlop', zapiszWyjscie: 'wyjscia' };
@@ -110,7 +110,7 @@ export function mount(container, ctx, prefill) {
     pdf.disabled = true;
     try {
       const res = await ctx.api.call('mojaKarta', { rok, miesiac });
-      if (res.ok) await openPdf(res.data); else if (res.code !== 'AUTH') toast(res.error || 'Nie udało się wygenerować karty.', 'err');
+      if (res.ok) offerPdf(res.data); else if (res.code !== 'AUTH') toast(res.error || 'Nie udało się wygenerować karty.', 'err');
     } catch (e) { toast(e instanceof NetworkError ? 'Wymaga internetu.' : 'Nie udało się otworzyć karty.', 'err'); }
     pdf.disabled = needNet();
   } }, 'Moja karta PDF');

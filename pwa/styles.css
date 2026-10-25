@@ -102,3 +102,8 @@ textarea.field { min-height: 80px; resize: vertical; }
 .queue.err { border-left-color: var(--red); background: var(--red-light); }
 .btn-pdf { background: var(--gray); margin-top: 4px; }
 .form-title + .msg { margin: 0 0 14px; }
+
+/* Gotowy PDF: drugi krok (otwarcie / udostępnienie wymaga świeżego stuknięcia) */
+.pdf-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--tabbar-h) + 16px + env(safe-area-inset-bottom)); z-index: 45; width: min(92vw, 520px); display: flex; gap: 8px; align-items: stretch; background: #fff; border: 2px solid var(--blue); border-radius: 14px; padding: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+.pdf-bar .pdf-open { flex: 1; min-width: 0; border: none; background: var(--blue); color: #fff; border-radius: 10px; padding: 12px; font-size: .95rem; font-weight: 800; min-height: 48px; cursor: pointer; overflow-wrap: anywhere; }
+.pdf-bar .pdf-close { border: none; background: var(--gray-light); color: #333; border-radius: 10px; min-width: 48px; font-size: 1.1rem; font-weight: 800; cursor: pointer; }

@@ -1,5 +1,5 @@
 import { el, fill, toast, fmtDate, fmtH, monthPicker, statusBadge, field } from '../ui.js';
-import { openPdf } from '../pdf.js';
+import { offerPdf } from '../pdf.js';
 import { NetworkError } from '../api.js';
 
 const OFFLINE_MSG = 'Panel administratora wymaga internetu.';
@@ -31,7 +31,7 @@ function pdfButton(ctx, label, action, getArgs, cls = 'sbtn') {
     try {
       const res = await call(ctx, action, getArgs());
       if (res) {
-        if (res.data && res.data.ok !== false && res.data.base64) await openPdf(res.data);
+        if (res.data && res.data.ok !== false && res.data.base64) offerPdf(res.data);
         else toast((res.data && res.data.error) || 'Nie udało się wygenerować pliku.', 'err');
       }
     } catch (e) { console.error(e); toast('Nie udało się otworzyć pliku.', 'err'); }
