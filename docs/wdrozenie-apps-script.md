@@ -82,8 +82,9 @@ Całość zajmuje ok. 20–30 minut. Istniejące strony (formularz, panel admina
 
 ## Zalecenia bezpieczeństwa
 
-- **Ustaw PIN-y co najmniej 6-cyfrowe.** Aplikacja blokuje zgadywanie (5 błędów z jednego urządzenia
-  lub 30 błędów łącznie = blokada na 15 minut), ale dłuższy PIN to dużo większa ochrona.
+- **Ustaw PIN-y co najmniej 6-cyfrowe.** Aplikacja blokuje zgadywanie (5 błędów z jednego urządzenia = blokada
+  tego urządzenia na 30 minut; 20 błędów łącznie ze wszystkich urządzeń = logowanie wstrzymane dla
+  wszystkich na godzinę — osoby już zalogowane pracują dalej normalnie), ale dłuższy PIN to dużo większa ochrona.
 - **Wylogowanie wszystkich** (np. po zgubieniu telefonu): w edytorze Apps Script wybierz funkcję
   `apiWylogujWszystkich` i kliknij **Uruchom**. Tworzy nowy tajny klucz, więc wszystkie
   dotychczasowe sesje wygasają, a pracownicy muszą ponownie wpisać PIN. Niewysłane wpisy

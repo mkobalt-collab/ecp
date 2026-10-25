@@ -212,9 +212,11 @@ const API_ACTIONS_ = {
 // ---------- logowanie i blokada PIN ----------
 
 const API_FAIL_LIMIT_DEV_ = 5;
-const API_FAIL_LIMIT_ALL_ = 30;
-const API_FAIL_TTL_S_ = 900;
-const API_MSG_LOCKED_ = 'Zbyt wiele nieudanych prób. Spróbuj ponownie za 15 minut.';
+const API_FAIL_TTL_DEV_S_ = 1800; // 30 min od ostatniej błędnej próby z urządzenia
+const API_FAIL_LIMIT_ALL_ = 20;
+const API_FAIL_TTL_ALL_S_ = 3600; // 60 min od ostatniej błędnej próby z dowolnego urządzenia
+const API_MSG_LOCKED_ = 'Zbyt wiele nieudanych prób. Spróbuj ponownie za 30 minut.';
+const API_MSG_LOCKED_ALL_ = 'Logowanie jest chwilowo wstrzymane z powodu wielu nieudanych prób. Spróbuj ponownie za godzinę.';
 
 function apiCacheInt_(cache, key) {
   const n = parseInt(cache.get(key), 10);
@@ -243,15 +245,14 @@ function apiLoginLocked_(args, deviceId, nowMs) {
   const devKey = 'api_fail_dev_' + apiNormDevice_(deviceId);
   const allKey = 'api_fail_all';
   // blokada sprawdzana przed weryfikacją PIN-u
-  if (apiCacheInt_(cache, devKey) >= API_FAIL_LIMIT_DEV_ || apiCacheInt_(cache, allKey) >= API_FAIL_LIMIT_ALL_) {
-    return apiErr_('LOCKED', API_MSG_LOCKED_);
-  }
+  if (apiCacheInt_(cache, allKey) >= API_FAIL_LIMIT_ALL_) return apiErr_('LOCKED', API_MSG_LOCKED_ALL_);
+  if (apiCacheInt_(cache, devKey) >= API_FAIL_LIMIT_DEV_) return apiErr_('LOCKED', API_MSG_LOCKED_);
   const pin = args && args.pin !== undefined && args.pin !== null ? String(args.pin) : '';
   const row = pin ? weryfikujPin(pin) : null;
   const user = row ? apiGetUser_(row.id) : null;
   if (!user) {
-    cache.put(devKey, String(apiCacheInt_(cache, devKey) + 1), API_FAIL_TTL_S_);
-    cache.put(allKey, String(apiCacheInt_(cache, allKey) + 1), API_FAIL_TTL_S_);
+    cache.put(devKey, String(apiCacheInt_(cache, devKey) + 1), API_FAIL_TTL_DEV_S_);
+    cache.put(allKey, String(apiCacheInt_(cache, allKey) + 1), API_FAIL_TTL_ALL_S_);
     return apiErr_('REJECTED', 'Nieprawidłowy PIN.');
   }
   cache.remove(devKey);

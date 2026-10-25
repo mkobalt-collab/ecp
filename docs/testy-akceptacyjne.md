@@ -6,7 +6,7 @@ Użyj konta testowego pracownika i swojego konta z rolą `admin`. Odhaczaj `[x]`
 ## Logowanie
 - [ ] Poprawny PIN loguje i pokazuje ekrany pracownika.
 - [ ] Błędny PIN pokazuje czytelny komunikat (bez informacji technicznych).
-- [ ] 5 błędnych PIN-ów z jednego telefonu blokuje logowanie na 15 minut (komunikat o blokadzie).
+- [ ] 5 błędnych PIN-ów z jednego telefonu blokuje logowanie na tym telefonie na 30 minut (komunikat o blokadzie).
 - [ ] Po upływie blokady poprawny PIN działa.
 - [ ] Uruchom w edytorze Apps Script funkcję `apiWylogujWszystkich` (lista funkcji obok **Uruchom** → `apiWylogujWszystkich` → **Uruchom**); aplikacja przy następnej akcji prosi o PIN, a niewysłane wpisy z kolejki zostają.
 

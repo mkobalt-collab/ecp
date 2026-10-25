@@ -4,7 +4,8 @@ import { loadApi } from './helpers/gas.mjs';
 
 const T = Date.UTC(2026, 9, 25, 12, 0, 0);
 const HEADER = ['ID', 'Imię', 'Nazwisko', 'Email', 'Stanowisko', 'PIN', 'Limit bieżący', 'Limit zaległy', 'Rola'];
-const LOCKED_MSG = 'Zbyt wiele nieudanych prób. Spróbuj ponownie za 15 minut.';
+const LOCKED_MSG = 'Zbyt wiele nieudanych prób. Spróbuj ponownie za 30 minut.';
+const LOCKED_ALL_MSG = 'Logowanie jest chwilowo wstrzymane z powodu wielu nieudanych prób. Spróbuj ponownie za godzinę.';
 
 function setup(extra = {}) {
   return loadApi({
@@ -63,11 +64,13 @@ test('device lock', () => {
   assert.equal(login(api, '1111', 'B').ok, true);
 });
 
-test('lock expires', () => {
+test('device lock lasts 30 minutes', () => {
   const api = setup();
   fail(api, 5, 'A');
   assert.equal(login(api, '1111', 'A').code, 'LOCKED');
-  api.clock.now = T + 901 * 1000;
+  api.clock.now = T + 1799 * 1000;
+  assert.equal(login(api, '1111', 'A').code, 'LOCKED');
+  api.clock.now = T + 1801 * 1000;
   assert.equal(login(api, '1111', 'A').ok, true);
 });
 
@@ -79,10 +82,16 @@ test('success resets device counter', () => {
   assert.equal(login(api, '1111', 'A').ok, true);
 });
 
-test('global lock', () => {
+test('global lock after 20 failures, lasts 60 minutes', () => {
   const api = setup();
-  for (let i = 0; i < 30; i++) login(api, '0000', 'dev' + i);
-  assert.equal(login(api, '1111', 'fresh').code, 'LOCKED');
+  for (let i = 0; i < 19; i++) login(api, '0000', 'dev' + i);
+  assert.equal(login(api, '1111', 'fresh').ok, true);
+  login(api, '0000', 'dev19');
+  assert.deepEqual(login(api, '1111', 'fresh2'), { ok: false, code: 'LOCKED', error: LOCKED_ALL_MSG });
+  api.clock.now = T + 3599 * 1000;
+  assert.equal(login(api, '1111', 'fresh3').code, 'LOCKED');
+  api.clock.now = T + 3601 * 1000;
+  assert.equal(login(api, '1111', 'fresh4').ok, true);
 });
 
 test('missing deviceId is shared device "brak"', () => {

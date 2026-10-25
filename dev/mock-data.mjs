@@ -58,7 +58,7 @@ seed();
 function login(args, deviceId) {
   const key = String(deviceId || 'x');
   const n = attempts.get(key) || 0;
-  if (n >= 5) return err('LOCKED', 'Zbyt wiele błędnych prób. Spróbuj za 15 minut.');
+  if (n >= 5) return err('LOCKED', 'Zbyt wiele nieudanych prób. Spróbuj ponownie za 30 minut.');
   const u = USERS[String(args && args.pin)];
   if (!u) { attempts.set(key, n + 1); return err('REJECTED', 'Nieprawidłowy PIN.'); }
   attempts.set(key, 0);
