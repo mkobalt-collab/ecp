@@ -146,6 +146,25 @@ function nadgodzinyCard(godziny) {
       : note('Brak nadgodzin w tym miesiącu.'));
 }
 
+// Wyjścia i odpracowania wybranego pracownika (z getWyjsciaAdmin): lista z miesiąca + saldo roczne zatwierdzonych.
+function wyjsciaCard(d, pracownikId) {
+  const label = el('div', { class: 'flabel' }, 'Wyjścia i odpracowania');
+  if (!d) return card(label, note('Nie udało się wczytać wyjść.'));
+  const lista = (d.lista || []).filter(x => String(x.pracownikId) === String(pracownikId))
+    .sort((a, b) => a.data.localeCompare(b.data));
+  const saldo = (d.salda || []).find(s => String(s.pracownikId) === String(pracownikId));
+  const odpr = x => x.rodzaj === 'Odpracowanie';
+  return card(label,
+    saldo ? el('div', { class: 'row' }, el('span', { class: 'grow' }, 'Saldo w roku (zatwierdzone): ',
+      el('b', null, saldo.doOdrobienia > 0.001 ? `${fmtH(saldo.doOdrobienia)} do odrobienia` : saldo.doOdrobienia < -0.001 ? `${fmtH(-saldo.doOdrobienia)} nadwyżki` : 'rozliczone'),
+      el('div', { class: 'sub' }, `wyjścia ${fmtH(saldo.wyjsciaH)} · odpracowane ${fmtH(saldo.odpracowaneH)}`))) : null,
+    lista.length ? lista.map(x => el('div', { class: 'row' },
+      el('span', { class: 'grow' }, `${odpr(x) ? '🔄' : '🚪'} ${fmtDate(x.data)} · ${x.od}–${x.do} · `,
+        el('b', { style: `color:var(${odpr(x) ? '--green' : '--red'})` }, (odpr(x) ? '+' : '−') + fmtH(x.godziny)),
+        el('div', { class: 'sub' }, x.rodzaj + (x.uwagi ? ' · ' + x.uwagi : ''))),
+      statusBadge(x.status))) : note('Brak wyjść i odpracowań w tym miesiącu.'));
+}
+
 function historia(ctx, alive, getMonth) {
   const select = el('select', { class: 'field' }, el('option', { value: '' }, 'Wczytywanie…'));
   const body = el('div');
@@ -157,7 +176,10 @@ function historia(ctx, alive, getMonth) {
     pdf.hidden = !id;
     if (!id) { fill(body); return; }
     fill(body, note('Wczytywanie…'));
-    const res = await call(ctx, 'getHistoriaPracownika', { pracownikId: id, ...getMonth() });
+    const [res, wyj] = await Promise.all([
+      call(ctx, 'getHistoriaPracownika', { pracownikId: id, ...getMonth() }),
+      call(ctx, 'getWyjsciaAdmin', getMonth()),
+    ]);
     if (mine !== seq || !alive()) return;
     if (!res) { fill(body, note('Nie udało się wczytać.')); return; }
     const g = res.data.godziny || [], u = res.data.urlopy || [];
@@ -166,7 +188,8 @@ function historia(ctx, alive, getMonth) {
         el('span', { class: 'grow' }, `${x.data} · ${x.od}–${x.do} · `, el('b', null, fmtH(x.godz)), x.nadg > 0.001 ? ` +${fmtH(x.nadg)}` : '', x.uwagi ? el('div', { class: 'sub' }, x.uwagi) : null))) : note('Brak godzin w tym miesiącu.')),
       nadgodzinyCard(g),
       card(el('div', { class: 'flabel' }, 'Urlopy i nieobecności'), u.length ? u.map(x => el('div', { class: 'row' },
-        el('span', { class: 'grow' }, x.typUrlopu, el('div', { class: 'sub' }, `${x.dataOd} – ${x.dataDo}`, el('br'), dniOpis(x, getMonth().miesiac) + (x.uwagi ? ' · ' + x.uwagi : ''))), statusBadge(x.status))) : note('Brak nieobecności w tym miesiącu.')));
+        el('span', { class: 'grow' }, x.typUrlopu, el('div', { class: 'sub' }, `${x.dataOd} – ${x.dataDo}`, el('br'), dniOpis(x, getMonth().miesiac) + (x.uwagi ? ' · ' + x.uwagi : ''))), statusBadge(x.status))) : note('Brak nieobecności w tym miesiącu.')),
+      wyjsciaCard(wyj && wyj.data, id));
   }
   select.addEventListener('change', load);
   call(ctx, 'getPracownicy', {}).then(res => {
