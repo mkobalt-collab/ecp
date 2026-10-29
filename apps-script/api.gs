@@ -286,6 +286,141 @@ function apiPdfUrlopyZakres_(pracownikId, dataOd, dataDo) {
   return { ok: true, base64: Utilities.base64Encode(blob.getBytes()), nazwa: blob.getName() };
 }
 
+// ---------- edycja wpisów przez admina (Historia pracownika) ----------
+// Numer wiersza z panelu mógł się przesunąć (ktoś w międzyczasie usunął wiersz) — zanim cokolwiek zmienimy,
+// sprawdzamy, że wiersz nadal należy do tego pracownika i ma tę samą datę. Urlopy szukamy po ID wniosku.
+
+const API_MSG_ZMIENIONY_ = 'Wpis zmienił się w arkuszu — odśwież historię i spróbuj ponownie.';
+const API_CZAS_RE_ = /^([01]?\d|2[0-3]):[0-5]\d$/;
+
+// Numery wierszy wpisów godzin z getHistoriaPracownika (ten sam filtr i kolejność co w GS).
+function apiDodajWierszeGodzin_(godziny, pracownikId, rok, miesiac) {
+  if (!Array.isArray(godziny) || !godziny.length) return;
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Godziny');
+  if (!sheet) return;
+  const nr = [];
+  sheet.getDataRange().getValues().forEach(function (r, i) {
+    if (i > 0 && String(r[1]) == String(pracownikId) && matchMonth(r[3], rok, miesiac)) nr.push(i + 1);
+  });
+  if (nr.length !== godziny.length) return; // niezgodność — bez numerów edycja jest wyłączona
+  godziny.forEach(function (g, i) { g.wiersz = nr[i]; });
+}
+
+// Wiersz arkusza nadal opisuje ten wpis? -> numer wiersza albo null
+function apiWierszWpisu_(sheet, wiersz, pracownikId, kolData, data) {
+  const w = parseInt(wiersz, 10);
+  if (!sheet || !(w >= 2) || w > sheet.getLastRow()) return null;
+  const r = sheet.getRange(w, 1, 1, kolData).getValues()[0];
+  if (String(r[1]).trim() !== String(pracownikId).trim()) return null;
+  const want = apiIsoDnia_(data);
+  return want && apiIsoDnia_(r[kolData - 1]) === want ? w : null;
+}
+
+function apiCzasy_(a) {
+  if (!API_CZAS_RE_.test(String(a.godzOd || '')) || !API_CZAS_RE_.test(String(a.godzDo || ''))) return { ok: false, error: 'Podaj godziny w formacie GG:MM.' };
+  const h = godzinyMiedzy(a.godzOd, a.godzDo);
+  if (!(h > 0)) return { ok: false, error: 'Godzina zakończenia musi być późniejsza niż rozpoczęcia.' };
+  return { h: parseFloat(h.toFixed(2)) };
+}
+
+// Godziny: kolumny D data, E od, F do, G przepracowane, H nadgodziny, J uwagi
+function apiAdminKorygujGodziny_(a) {
+  const c = apiCzasy_(a);
+  if (c.ok === false) return c;
+  return apiWithLock_(function () {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Godziny');
+    const w = apiWierszWpisu_(sheet, a.wiersz, a.pracownikId, 4, a.data);
+    if (!w) return { ok: false, error: API_MSG_ZMIENIONY_ };
+    const nadg = nadgodzinyDnia(sheet.getRange(w, 4).getValue(), c.h); // sobota = wszystkie godziny
+    sheet.getRange(w, 5, 1, 4).setValues([[a.godzOd, a.godzDo, c.h, parseFloat(nadg.toFixed(2))]]);
+    sheet.getRange(w, 10).setValue(String(a.uwagi || ''));
+    return { ok: true, przepracowane: c.h, nadgodziny: nadg };
+  });
+}
+
+function apiAdminUsunGodziny_(a) {
+  return apiWithLock_(function () {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Godziny');
+    const w = apiWierszWpisu_(sheet, a.wiersz, a.pracownikId, 4, a.data);
+    if (!w) return { ok: false, error: API_MSG_ZMIENIONY_ };
+    sheet.deleteRow(w);
+    return { ok: true };
+  });
+}
+
+// Wyjścia: kolumny D rodzaj, E data, F od, G do, H godziny, I uwagi, J status
+function apiAdminEdytujWyjscie_(a) {
+  const c = apiCzasy_(a);
+  if (c.ok === false) return c;
+  const rodzaj = a.rodzaj === 'Odpracowanie' ? 'Odpracowanie' : 'Wyjście prywatne';
+  return apiWithLock_(function () {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Wyjścia');
+    const w = apiWierszWpisu_(sheet, a.wiersz, a.pracownikId, 5, a.data);
+    if (!w) return { ok: false, error: API_MSG_ZMIENIONY_ };
+    sheet.getRange(w, 4).setValue(rodzaj);
+    sheet.getRange(w, 6, 1, 4).setValues([[a.godzOd, a.godzDo, c.h, String(a.uwagi || '')]]);
+    return { ok: true, godziny: c.h };
+  });
+}
+
+function apiAdminWyjscieStatus_(a) {
+  const status = a.status === 'Zatwierdzone' || a.status === 'Odrzucone' ? a.status : 'Oczekuje';
+  return apiWithLock_(function () {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Wyjścia');
+    const w = apiWierszWpisu_(sheet, a.wiersz, a.pracownikId, 5, a.data);
+    if (!w) return { ok: false, error: API_MSG_ZMIENIONY_ };
+    sheet.getRange(w, 10).setValue(status);
+    return { ok: true, status: status };
+  });
+}
+
+function apiAdminUsunWyjscie_(a) {
+  return apiWithLock_(function () {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Wyjścia');
+    const w = apiWierszWpisu_(sheet, a.wiersz, a.pracownikId, 5, a.data);
+    if (!w) return { ok: false, error: API_MSG_ZMIENIONY_ };
+    sheet.deleteRow(w);
+    return { ok: true };
+  });
+}
+
+// Urlopy (po ID wniosku w kol. J): D typ, E od, F do, G dni, H uwagi. Status zmienia ustawStatusUrlopu.
+function apiWierszUrlopu_(sheet, idWniosku) {
+  const last = sheet ? sheet.getLastRow() : 0;
+  const want = String(idWniosku || '').trim();
+  if (last < 2 || !want) return null;
+  const ids = sheet.getRange(2, 10, last - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) if (String(ids[i][0]).trim() === want) return i + 2;
+  return null;
+}
+
+function apiAdminEdytujUrlop_(a) {
+  const od = apiIsoDnia_(a.dataOd), doo = apiIsoDnia_(a.dataDo);
+  if (!od || !doo) return { ok: false, error: 'Podaj daty od i do.' };
+  if (od > doo) return { ok: false, error: 'Data „od” musi być przed datą „do”.' };
+  if (getTypyNieobecnosci().indexOf(a.typ) < 0) return { ok: false, error: 'Nieprawidłowy typ nieobecności.' };
+  const dni = apiDniRobocze_(apiDzienUtc_(od), apiDzienUtc_(doo), getSwieta());
+  if (!dni) return { ok: false, error: 'W tym okresie nie ma dni roboczych.' };
+  const dzien = function (iso) { return new Date(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)); };
+  return apiWithLock_(function () {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Urlopy');
+    const w = apiWierszUrlopu_(sheet, a.idWniosku);
+    if (!w || String(sheet.getRange(w, 2).getValue()).trim() !== String(a.pracownikId).trim()) return { ok: false, error: API_MSG_ZMIENIONY_ };
+    sheet.getRange(w, 4, 1, 5).setValues([[a.typ, dzien(od), dzien(doo), dni, String(a.uwagi || '')]]);
+    return { ok: true, dni: dni };
+  });
+}
+
+function apiAdminUsunUrlop_(a) {
+  return apiWithLock_(function () {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Urlopy');
+    const w = apiWierszUrlopu_(sheet, a.idWniosku);
+    if (!w || String(sheet.getRange(w, 2).getValue()).trim() !== String(a.pracownikId).trim()) return { ok: false, error: API_MSG_ZMIENIONY_ };
+    sheet.deleteRow(w);
+    return { ok: true };
+  });
+}
+
 function apiWpisImieniaAdmina_(idWniosku, user) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Urlopy');
   if (!sheet) return;
@@ -350,9 +485,19 @@ const API_ACTIONS_ = {
   getPracownicy: apiAdminAct_(function (a) { return getPracownicy(); }),
   getHistoriaPracownika: apiAdminAct_(function (a) {
     const h = getHistoriaPracownika(a.pracownikId, a.rok, a.miesiac);
-    if (h && h.ok !== false) apiDodajDniWMiesiacu_(h.urlopy, a.rok, a.miesiac);
+    if (h && h.ok !== false) {
+      apiDodajDniWMiesiacu_(h.urlopy, a.rok, a.miesiac);
+      apiDodajWierszeGodzin_(h.godziny, a.pracownikId, a.rok, a.miesiac);
+    }
     return h;
   }),
+  adminKorygujGodziny: apiAdminAct_(function (a) { return apiAdminKorygujGodziny_(a); }),
+  adminUsunGodziny: apiAdminAct_(function (a) { return apiAdminUsunGodziny_(a); }),
+  adminEdytujWyjscie: apiAdminAct_(function (a) { return apiAdminEdytujWyjscie_(a); }),
+  adminWyjscieStatus: apiAdminAct_(function (a) { return apiAdminWyjscieStatus_(a); }),
+  adminUsunWyjscieH: apiAdminAct_(function (a) { return apiAdminUsunWyjscie_(a); }),
+  adminEdytujUrlop: apiAdminAct_(function (a) { return apiAdminEdytujUrlop_(a); }),
+  adminUsunUrlop: apiAdminAct_(function (a) { return apiAdminUsunUrlop_(a); }),
   getRaportMiesieczny: apiAdminAct_(function (a) { return getRaportMiesieczny(a.rok, a.miesiac); }),
   pdfRaportMiesieczny: apiAdminAct_(function (a) { return generujRaportMiesiecznyPdf(a.rok, a.miesiac); }),
   pdfKartyEwidencji: apiAdminAct_(function (a) { return generujKartyEwidencji(a.rok, a.miesiac); }),

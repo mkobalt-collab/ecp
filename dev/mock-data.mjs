@@ -215,7 +215,7 @@ const ACTIONS = {
   getHistoriaPracownika: { role: 'admin', run: (a, args) => {
     const fd = s => s.split('-').reverse().join('.');
     const godziny = state.godziny.filter(g => g.pid === args.pracownikId && inMonth(g.data, args.rok, args.miesiac))
-      .map(g => ({ typ: 'praca', data: fd(g.data), od: g.od, do: g.do, godz: g.przepracowane, nadg: g.nadgodziny, uwagi: g.uwagi, dzienWolny: false, sobota: isSat(g.data) }));
+      .map(g => ({ typ: 'praca', data: fd(g.data), od: g.od, do: g.do, godz: g.przepracowane, nadg: g.nadgodziny, uwagi: g.uwagi, dzienWolny: false, sobota: isSat(g.data), wiersz: g.wiersz }));
     const urlopy = state.nieob.filter(n => n.pid === args.pracownikId && (inMonth(n.dataOd, args.rok, args.miesiac) || inMonth(n.dataDo, args.rok, args.miesiac)))
       .map(n => ({ typ: 'urlop', typUrlopu: n.typ, dataOd: fd(n.dataOd), dataDo: fd(n.dataDo), dni: n.dni, dniWMiesiacu: dniWMies(n.dataOd, n.dataDo, +args.rok, +args.miesiac), uwagi: n.uwagi, status: n.status, wiersz: n.wiersz, id: n.id, decyzjaKto: '', decyzjaKiedy: '' }));
     return { godziny, urlopy };
@@ -240,6 +240,29 @@ const ACTIONS = {
   pdfWnioskiMiesiaca: { role: 'admin', run: () => ({ ok: true, base64: PDF_B64, nazwa: 'Wnioski_miesiaca.pdf' }) },
   pdfKsiegowosc: { role: 'admin', run: () => ({ ok: true, base64: PDF_B64, nazwa: 'Ksiegowosc.pdf' }) },
   pdfZestawienie: { role: 'admin', run: () => ({ ok: true, base64: PDF_B64, nazwa: 'Zestawienie.pdf' }) },
+  // edycja wpisów przez admina (jak api.gs: wiersz musi nadal należeć do pracownika i mieć tę samą datę)
+  adminKorygujGodziny: { role: 'admin', run: (a, args) => {
+    const g = findRow(state.godziny, args); if (!g) return { ok: false, error: ZMIENIONY };
+    const h = hours(args.godzOd, args.godzDo); if (!(h > 0)) return { ok: false, error: 'Godzina zakończenia musi być późniejsza niż rozpoczęcia.' };
+    Object.assign(g, { od: args.godzOd, do: args.godzDo, przepracowane: +h.toFixed(2), nadgodziny: +nadg(g.data, h).toFixed(2), uwagi: args.uwagi || '' });
+    return { ok: true, przepracowane: g.przepracowane, nadgodziny: g.nadgodziny };
+  } },
+  adminUsunGodziny: { role: 'admin', run: (a, args) => findRow(state.godziny, args) ? del(state.godziny, args.wiersz, null) : { ok: false, error: ZMIENIONY } },
+  adminEdytujWyjscie: { role: 'admin', run: (a, args) => {
+    const w = findRow(state.wyj, args); if (!w) return { ok: false, error: ZMIENIONY };
+    const h = hours(args.godzOd, args.godzDo);
+    Object.assign(w, { rodzaj: args.rodzaj === 'Odpracowanie' ? 'Odpracowanie' : 'Wyjście prywatne', od: args.godzOd, do: args.godzDo, godziny: +h.toFixed(2), uwagi: args.uwagi || '' });
+    return { ok: true, godziny: w.godziny };
+  } },
+  adminWyjscieStatus: { role: 'admin', run: (a, args) => { const w = findRow(state.wyj, args); if (!w) return { ok: false, error: ZMIENIONY }; w.status = args.status; return { ok: true, status: w.status }; } },
+  adminUsunWyjscieH: { role: 'admin', run: (a, args) => findRow(state.wyj, args) ? del(state.wyj, args.wiersz, null) : { ok: false, error: ZMIENIONY } },
+  adminEdytujUrlop: { role: 'admin', run: (a, args) => {
+    const n = state.nieob.find(x => x.id === args.idWniosku && x.pid === args.pracownikId); if (!n) return { ok: false, error: ZMIENIONY };
+    if (!args.dataOd || !args.dataDo || args.dataOd > args.dataDo) return { ok: false, error: 'Data „od” musi być przed datą „do”.' };
+    Object.assign(n, { typ: args.typ, dataOd: args.dataOd, dataDo: args.dataDo, dni: dniRobocze(args.dataOd, args.dataDo), uwagi: args.uwagi || '' });
+    return { ok: true, dni: n.dni };
+  } },
+  adminUsunUrlop: { role: 'admin', run: (a, args) => { const i = state.nieob.findIndex(x => x.id === args.idWniosku && x.pid === args.pracownikId); if (i < 0) return { ok: false, error: ZMIENIONY }; state.nieob.splice(i, 1); return { ok: true }; } },
   getUrlopyZakres: { role: 'admin', run: (a, args) => {
     const u = byId(args.pracownikId);
     if (!u) return { ok: false, error: 'Nie znaleziono pracownika.' };
@@ -255,6 +278,10 @@ const ACTIONS = {
   pdfUrlopyZakres: { role: 'admin', run: (a, args) => { const z = ACTIONS.getUrlopyZakres.run(a, args); return z.ok === false ? z : { ok: true, base64: PDF_B64, nazwa: 'Urlopy_' + args.pracownikId + '.pdf' }; } },
   pdfKartaPracownika: { role: 'admin', run: (a, args) => byId(args.pracownikId) ? { ok: true, base64: PDF_B64, nazwa: 'Karta_' + args.pracownikId + '.pdf' } : { ok: false, error: 'Nie znaleziono pracownika' } },
 };
+
+const ZMIENIONY = 'Wpis zmienił się w arkuszu — odśwież historię i spróbuj ponownie.';
+const toIso = v => { const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(v || '')); return m ? `${m[3]}-${m[2]}-${m[1]}` : String(v || '').slice(0, 10); };
+const findRow = (arr, args) => arr.find(x => x.wiersz === +args.wiersz && x.pid === args.pracownikId && x.data === toIso(args.data));
 
 function del(arr, wiersz, pid, lockedMsg) {
   const i = arr.findIndex(x => x.wiersz === wiersz && (pid === null || x.pid === pid));

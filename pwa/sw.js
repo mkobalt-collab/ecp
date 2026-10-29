@@ -1,4 +1,4 @@
-const VERSION = 'v6';
+const VERSION = 'v7';
 const CACHE = `ecp-${VERSION}`;
 // Ścieżki względne (działa pod podścieżką GitHub Pages). Każdy plik ładowany przez aplikację musi tu być.
 const PRECACHE = [
