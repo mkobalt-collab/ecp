@@ -2,9 +2,11 @@ import { el, fill, field, todayIso, cachedLoad, saveForm, confirmOvernight } fro
 
 export function mount(container, ctx, prefill) {
   const a = (prefill && prefill.args) || {};
+  // Domyślne godziny: stanowisko DH pracuje 7–15, pozostali 8–16.
+  const dh = String((ctx.user && ctx.user.stanowisko) || '').trim().toUpperCase() === 'DH';
   const data = el('input', { class: 'field', type: 'date', value: a.data || todayIso() });
-  const od = el('input', { class: 'field', type: 'time', value: a.godzOd || '08:00' });
-  const doo = el('input', { class: 'field', type: 'time', value: a.godzDo || '16:00' });
+  const od = el('input', { class: 'field', type: 'time', value: a.godzOd || (dh ? '07:00' : '08:00') });
+  const doo = el('input', { class: 'field', type: 'time', value: a.godzDo || (dh ? '15:00' : '16:00') });
   const uwagi = el('textarea', { class: 'field', placeholder: 'praca zdalna, wyjazd...' }, a.uwagi || '');
   const missing = el('div', { class: 'missing', hidden: true });
   const stale = el('div');

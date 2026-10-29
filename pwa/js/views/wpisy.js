@@ -3,6 +3,31 @@ import { offerPdf } from '../pdf.js';
 import { NetworkError } from '../api.js';
 
 const TAB_FOR = { zapiszGodziny: 'godziny', zapiszUrlop: 'urlop', zapiszWyjscie: 'wyjscia' };
+
+// Polska odmiana: plural(1|2-4|5+) np. ['dzień', 'dni', 'dni'].
+const plural = (n, [one, few, many]) => n === 1 ? one : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) ? few : many;
+
+// Podsumowanie miesiąca: dni pracy i godziny; nieobecności zgrupowane po typie (bez odrzuconych); wyjścia.
+function summary(d) {
+  const g = d.godziny || [], w = d.wyjscia || [];
+  const lines = [];
+  lines.push(g.length
+    ? `⏱ ${g.length} ${plural(g.length, ['dzień', 'dni', 'dni'])} pracy · ${fmtH(d.sumaPrzepracowane || 0)}` + (d.sumaNadgodziny > 0.001 ? ` (nadgodziny ${fmtH(d.sumaNadgodziny)})` : '')
+    : '⏱ Brak wpisanych dni pracy');
+  const typy = new Map();
+  (d.nieobecnosci || []).filter(x => x.status !== 'Odrzucone').forEach(x => {
+    const t = typy.get(x.typ) || { dni: 0, oczekuje: false };
+    t.dni += parseFloat(x.dni) || 0;
+    t.oczekuje = t.oczekuje || !x.status || x.status === 'Oczekuje';
+    typy.set(x.typ, t);
+  });
+  typy.forEach((t, typ) => lines.push(`🏖 ${typ}: ${t.dni} ${plural(t.dni, ['dzień', 'dni', 'dni'])}${t.oczekuje ? ' (oczekuje)' : ''}`));
+  if (w.length) {
+    const h = w.reduce((s, x) => s + (parseFloat(x.godziny) || 0), 0);
+    lines.push(`🕐 ${w.length} ${plural(w.length, ['wyjście', 'wyjścia', 'wyjść'])} (${fmtH(h)})`);
+  }
+  return el('div', { class: 'pill good' }, lines.map(l => el('div', null, l)));
+}
 const monthOf = it => (it.action === 'zapiszUrlop' ? it.args.dataOd : it.args.data || '').slice(0, 7);
 const label = it => {
   const a = it.args;
@@ -85,7 +110,7 @@ export function mount(container, ctx, prefill) {
     const g = d.godziny || [], n = d.nieobecnosci || [], w = d.wyjscia || [];
     const sect = (title, rows, empty) => el('div', { class: 'sect' }, el('h3', null, title), el('div', { class: 'card' }, rows.length ? rows : el('div', { class: 'muted' }, empty)));
     fill(body, renderMonth.note || '',
-      el('div', { class: 'pill good' }, `⏱ ${g.length} dni · 🏖 ${n.length} nieob. · 🕐 ${w.length} wyjść` + (g.length ? ` · razem ${fmtH(d.sumaPrzepracowane || 0)}` + (d.sumaNadgodziny > 0.001 ? ` (nadg. ${fmtH(d.sumaNadgodziny)})` : '') : '')),
+      summary(d),
       sect('Godziny', g.map(x => editing === x.wiersz ? editRow(x) : el('div', { class: 'row' },
         el('span', { class: 'grow' }, `${fmtDate(x.data)} · ${x.od}–${x.do} · `, el('b', null, fmtH(x.przepracowane)), x.nadgodziny > 0.001 ? ` +${fmtH(x.nadgodziny)}` : '', x.projekt ? ` · ${x.projekt}` : '', x.uwagi ? el('div', { class: 'sub' }, x.uwagi) : null),
         sbtn('✏️', () => { editing = x.wiersz; renderMonth(); }, {}, { 'aria-label': 'Popraw', ...netProps() }),

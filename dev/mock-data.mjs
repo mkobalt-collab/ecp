@@ -7,6 +7,7 @@ const TYPY_WYJ = ['Wyjście prywatne', 'Odpracowanie'];
 const USERS = {
   '1111': { id: 'P001', imie: 'Anna', nazwisko: 'Kowalska', stanowisko: 'Technik weterynarii', rola: 'pracownik' },
   '2222': { id: 'P002', imie: 'Jan', nazwisko: 'Nowak', stanowisko: 'Lekarz weterynarii', rola: 'pracownik' },
+  '5555': { id: 'P003', imie: 'Ewa', nazwisko: 'Zielińska', stanowisko: 'DH', rola: 'pracownik' },
   '9999': { id: 'A001', imie: 'Marcin', nazwisko: 'Admin', stanowisko: 'Kierownik', rola: 'admin' },
 };
 const byId = id => Object.values(USERS).find(u => u.id === id);
