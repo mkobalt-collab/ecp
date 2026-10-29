@@ -1,4 +1,4 @@
-import { el, fill, toast, fmtDate, fmtH, monthPicker, statusBadge, field } from '../ui.js';
+import { el, fill, toast, fmtDate, fmtH, monthPicker, statusBadge, field, dniOpis } from '../ui.js';
 import { offerPdf } from '../pdf.js';
 import { NetworkError } from '../api.js';
 
@@ -166,7 +166,7 @@ function historia(ctx, alive, getMonth) {
         el('span', { class: 'grow' }, `${x.data} · ${x.od}–${x.do} · `, el('b', null, fmtH(x.godz)), x.nadg > 0.001 ? ` +${fmtH(x.nadg)}` : '', x.uwagi ? el('div', { class: 'sub' }, x.uwagi) : null))) : note('Brak godzin w tym miesiącu.')),
       nadgodzinyCard(g),
       card(el('div', { class: 'flabel' }, 'Urlopy i nieobecności'), u.length ? u.map(x => el('div', { class: 'row' },
-        el('span', { class: 'grow' }, x.typUrlopu, el('div', { class: 'sub' }, `${x.dataOd} – ${x.dataDo} · ${x.dni} dni${x.uwagi ? ' · ' + x.uwagi : ''}`)), statusBadge(x.status))) : note('Brak nieobecności w tym miesiącu.')));
+        el('span', { class: 'grow' }, x.typUrlopu, el('div', { class: 'sub' }, `${x.dataOd} – ${x.dataDo}`, el('br'), dniOpis(x, getMonth().miesiac) + (x.uwagi ? ' · ' + x.uwagi : ''))), statusBadge(x.status))) : note('Brak nieobecności w tym miesiącu.')));
   }
   select.addEventListener('change', load);
   call(ctx, 'getPracownicy', {}).then(res => {

@@ -27,6 +27,8 @@ const hours = (od, doo) => { let m = hm(doo) - hm(od); if (m < 0) m += 1440; ret
 // jak GS nadgodzinyDnia: sobota = wszystkie godziny, inne dni = ponad normę
 const isSat = iso => new Date(iso + 'T12:00:00Z').getUTCDay() === 6;
 const nadg = (iso, h) => isSat(iso) ? h : Math.max(0, h - NAD);
+// jak api.gs apiDniWMiesiacu_: dni pon–pt wniosku w danym miesiącu (atrapa bez świąt)
+const dniWMies = (od, doo, rok, mies) => { let n = 0; const s = Math.max(Date.parse(od + 'T00:00:00Z'), Date.UTC(rok, mies - 1, 1)), e = Math.min(Date.parse(doo + 'T00:00:00Z'), Date.UTC(rok, mies, 0)); for (let t = s; t <= e; t += 864e5) { const w = new Date(t).getUTCDay(); if (w && w !== 6) n++; } return n; };
 const inMonth = (s, rok, mies) => { const d = new Date(s); return d.getFullYear() === +rok && d.getMonth() === +mies - 1; };
 const NAD = 8;
 
@@ -118,7 +120,7 @@ const ACTIONS = {
     const godziny = state.godziny.filter(g => g.pid === u.id && inMonth(g.data, rok, miesiac)).sort((x, y) => x.data.localeCompare(y.data))
       .map(g => ({ wiersz: g.wiersz, data: g.data, od: g.od, do: g.do, przepracowane: g.przepracowane, nadgodziny: g.nadgodziny, projekt: g.projekt, uwagi: g.uwagi }));
     const nieobecnosci = state.nieob.filter(n => n.pid === u.id && (inMonth(n.dataOd, rok, miesiac) || inMonth(n.dataDo, rok, miesiac))).sort((x, y) => x.dataOd.localeCompare(y.dataOd))
-      .map(n => ({ wiersz: n.wiersz, typ: n.typ, dataOd: n.dataOd, dataDo: n.dataDo, dni: n.dni, uwagi: n.uwagi, status: n.status }));
+      .map(n => ({ wiersz: n.wiersz, typ: n.typ, dataOd: n.dataOd, dataDo: n.dataDo, dni: n.dni, dniWMiesiacu: dniWMies(n.dataOd, n.dataDo, rok, miesiac), uwagi: n.uwagi, status: n.status }));
     const wyjscia = state.wyj.filter(w => w.pid === u.id && inMonth(w.data, rok, miesiac)).sort((x, y) => x.data.localeCompare(y.data))
       .map(w => ({ wiersz: w.wiersz, rodzaj: w.rodzaj, data: w.data, od: w.od, do: w.do, godziny: w.godziny, uwagi: w.uwagi, status: w.status }));
     const sum = k => +godziny.reduce((s, g) => s + g[k], 0).toFixed(2);
@@ -213,7 +215,7 @@ const ACTIONS = {
     const godziny = state.godziny.filter(g => g.pid === args.pracownikId && inMonth(g.data, args.rok, args.miesiac))
       .map(g => ({ typ: 'praca', data: fd(g.data), od: g.od, do: g.do, godz: g.przepracowane, nadg: g.nadgodziny, uwagi: g.uwagi, dzienWolny: false, sobota: isSat(g.data) }));
     const urlopy = state.nieob.filter(n => n.pid === args.pracownikId && (inMonth(n.dataOd, args.rok, args.miesiac) || inMonth(n.dataDo, args.rok, args.miesiac)))
-      .map(n => ({ typ: 'urlop', typUrlopu: n.typ, dataOd: fd(n.dataOd), dataDo: fd(n.dataDo), dni: n.dni, uwagi: n.uwagi, status: n.status, wiersz: n.wiersz, id: n.id, decyzjaKto: '', decyzjaKiedy: '' }));
+      .map(n => ({ typ: 'urlop', typUrlopu: n.typ, dataOd: fd(n.dataOd), dataDo: fd(n.dataDo), dni: n.dni, dniWMiesiacu: dniWMies(n.dataOd, n.dataDo, +args.rok, +args.miesiac), uwagi: n.uwagi, status: n.status, wiersz: n.wiersz, id: n.id, decyzjaKto: '', decyzjaKiedy: '' }));
     return { godziny, urlopy };
   } },
   getRaportMiesieczny: { role: 'admin', run: (a, args) => {

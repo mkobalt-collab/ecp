@@ -1,11 +1,8 @@
-import { el, fill, toast, fmtDate, fmtH, monthPicker, statusBadge, loadWpisy, p2, confirmOvernight } from '../ui.js';
+import { el, fill, toast, fmtDate, fmtH, monthPicker, statusBadge, loadWpisy, p2, confirmOvernight, plural, dniWMiesiacu, dniOpis, MIESIAC_MIEJSC } from '../ui.js';
 import { offerPdf } from '../pdf.js';
 import { NetworkError } from '../api.js';
 
 const TAB_FOR = { zapiszGodziny: 'godziny', zapiszUrlop: 'urlop', zapiszWyjscie: 'wyjscia' };
-
-// Polska odmiana: plural(1|2-4|5+) np. ['dzień', 'dni', 'dni'].
-const plural = (n, [one, few, many]) => n === 1 ? one : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) ? few : many;
 
 // Podsumowanie miesiąca: dni pracy i godziny; nieobecności zgrupowane po typie (bez odrzuconych); wyjścia.
 function summary(d) {
@@ -17,11 +14,11 @@ function summary(d) {
   const typy = new Map();
   (d.nieobecnosci || []).filter(x => x.status !== 'Odrzucone').forEach(x => {
     const t = typy.get(x.typ) || { dni: 0, oczekuje: false };
-    t.dni += parseFloat(x.dni) || 0;
+    t.dni += dniWMiesiacu(x);
     t.oczekuje = t.oczekuje || !x.status || x.status === 'Oczekuje';
     typy.set(x.typ, t);
   });
-  typy.forEach((t, typ) => lines.push(`🏖 ${typ}: ${t.dni} ${plural(t.dni, ['dzień', 'dni', 'dni'])}${t.oczekuje ? ' (oczekuje)' : ''}`));
+  typy.forEach((t, typ) => lines.push(`🏖 ${typ}: ${t.dni} ${plural(t.dni, ['dzień', 'dni', 'dni'])} w ${MIESIAC_MIEJSC[d.miesiac] || 'tym miesiącu'}${t.oczekuje ? ' (oczekuje)' : ''}`));
   if (w.length) {
     const h = w.reduce((s, x) => s + (parseFloat(x.godziny) || 0), 0);
     lines.push(`🕐 ${w.length} ${plural(w.length, ['wyjście', 'wyjścia', 'wyjść'])} (${fmtH(h)})`);
@@ -116,7 +113,7 @@ export function mount(container, ctx, prefill) {
         sbtn('✏️', () => { editing = x.wiersz; renderMonth(); }, {}, { 'aria-label': 'Popraw', ...netProps() }),
         sbtn('🗑', () => remove('usunGodziny', x.wiersz), { danger: true }, { 'aria-label': 'Usuń', ...netProps() }))), 'Brak godzin w tym miesiącu.'),
       sect('Nieobecności', n.map(x => el('div', { class: 'row' },
-        el('span', { class: 'grow' }, x.typ, el('div', { class: 'sub' }, `${fmtDate(x.dataOd)} – ${fmtDate(x.dataDo)} · ${x.dni} dni${x.uwagi ? ' · ' + x.uwagi : ''}`)), statusBadge(x.status),
+        el('span', { class: 'grow' }, x.typ, el('div', { class: 'sub' }, `${fmtDate(x.dataOd)} – ${fmtDate(x.dataDo)}`, el('br'), dniOpis(x, month.miesiac) + (x.uwagi ? ' · ' + x.uwagi : ''))), statusBadge(x.status),
         x.status === 'Oczekuje' ? sbtn('🗑', () => remove('usunNieobecnosc', x.wiersz), { danger: true }, { 'aria-label': 'Usuń', ...netProps() }) : null)), 'Brak nieobecności w tym miesiącu.'),
       sect('Wyjścia i odpracowania', w.map(x => {
         const plus = x.rodzaj === 'Odpracowanie';

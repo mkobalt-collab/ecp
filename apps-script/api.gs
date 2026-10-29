@@ -140,6 +140,47 @@ function apiQueuedAct_(fn) {
   };
 }
 
+// ---------- dni nieobecności w oglądanym miesiącu ----------
+// Wniosek przechodzący przez granicę miesiąca: liczymy tylko dni robocze (pon–pt, bez świąt z arkusza
+// „Święta”) przypadające w danym miesiącu. GS podaje cały wniosek w polu `dni` — zostaje bez zmian.
+
+// 'yyyy-MM-dd' albo 'dd.MM.yyyy' -> ms UTC północy; null gdy nie da się odczytać
+function apiDzienUtc_(s) {
+  const t = String(s === undefined || s === null ? '' : s).trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  m = t.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+  if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1]);
+  return null;
+}
+
+function apiDniWMiesiacu_(dataOd, dataDo, rok, miesiac, swieta) {
+  const od = apiDzienUtc_(dataOd), doo = apiDzienUtc_(dataDo);
+  if (od === null || doo === null) return null;
+  const start = Math.max(od, Date.UTC(+rok, +miesiac - 1, 1));
+  const end = Math.min(doo, Date.UTC(+rok, +miesiac, 0));
+  const wolne = {};
+  (swieta || []).forEach(function (s) { wolne[s] = true; });
+  let n = 0;
+  for (let t = start; t <= end; t += 864e5) {
+    const d = new Date(t);
+    const dow = d.getUTCDay();
+    if (dow === 0 || dow === 6) continue;
+    if (wolne[d.toISOString().slice(0, 10)]) continue;
+    n++;
+  }
+  return n;
+}
+
+function apiDodajDniWMiesiacu_(lista, rok, miesiac) {
+  if (!Array.isArray(lista) || !lista.length || !rok || !miesiac) return;
+  const swieta = typeof getSwieta === 'function' ? getSwieta() : [];
+  lista.forEach(function (x) {
+    const n = apiDniWMiesiacu_(x.dataOd, x.dataDo, rok, miesiac, swieta);
+    if (n !== null) x.dniWMiesiacu = n;
+  });
+}
+
 function apiWpisImieniaAdmina_(idWniosku, user) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Urlopy');
   if (!sheet) return;
@@ -171,7 +212,11 @@ const API_ACTIONS_ = {
   }),
   zapiszUrlop: apiQueuedAct_(function (d) { return zapiszUrlop(d); }),
   zapiszWyjscie: apiQueuedAct_(function (d) { return zapiszWyjscie(d); }),
-  getMojeWpisy: apiUserAct_(function (id, a) { return getMojeWpisy(id, a.rok, a.miesiac); }),
+  getMojeWpisy: apiUserAct_(function (id, a) {
+    const w = getMojeWpisy(id, a.rok, a.miesiac);
+    if (w && w.ok !== false) apiDodajDniWMiesiacu_(w.nieobecnosci, w.rok, w.miesiac);
+    return w;
+  }),
   getSaldoWyjsc: apiUserAct_(function (id, a) { return getSaldoWyjsc(id); }),
   getUrlopySummary: apiUserAct_(function (id, a) { return getUrlopySummary(id); }),
   getBrakujaceDni: apiUserAct_(function (id, a) { return getBrakujaceDni(id); }),
@@ -198,7 +243,11 @@ const API_ACTIONS_ = {
   getNieobecnosciAdmin: apiAdminAct_(function (a) { return getNieobecnosciAdmin(a.rok, a.miesiac); }),
   adminUsunNieobecnosc: apiAdminAct_(function (a) { return adminUsunNieobecnosc(a.wiersz); }),
   getPracownicy: apiAdminAct_(function (a) { return getPracownicy(); }),
-  getHistoriaPracownika: apiAdminAct_(function (a) { return getHistoriaPracownika(a.pracownikId, a.rok, a.miesiac); }),
+  getHistoriaPracownika: apiAdminAct_(function (a) {
+    const h = getHistoriaPracownika(a.pracownikId, a.rok, a.miesiac);
+    if (h && h.ok !== false) apiDodajDniWMiesiacu_(h.urlopy, a.rok, a.miesiac);
+    return h;
+  }),
   getRaportMiesieczny: apiAdminAct_(function (a) { return getRaportMiesieczny(a.rok, a.miesiac); }),
   pdfRaportMiesieczny: apiAdminAct_(function (a) { return generujRaportMiesiecznyPdf(a.rok, a.miesiac); }),
   pdfKartyEwidencji: apiAdminAct_(function (a) { return generujKartyEwidencji(a.rok, a.miesiac); }),

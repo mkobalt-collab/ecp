@@ -100,6 +100,22 @@ export async function cachedLoad({ key, action, args = {}, ctx, render, containe
   return { data, fresh: false };
 }
 
+// Polska odmiana: plural(1|2-4|5+) np. ['dzień', 'dni', 'dni'].
+export const plural = (n, [one, few, many]) => n === 1 ? one : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) ? few : many;
+
+// Miejscownik nazw miesięcy: „w październiku”.
+export const MIESIAC_MIEJSC = ['', 'styczniu', 'lutym', 'marcu', 'kwietniu', 'maju', 'czerwcu', 'lipcu', 'sierpniu', 'wrześniu', 'październiku', 'listopadzie', 'grudniu'];
+
+// Dni nieobecności w oglądanym miesiącu (dniWMiesiacu z API; starsze odpowiedzi — cały wniosek).
+export const dniWMiesiacu = x => x.dniWMiesiacu !== undefined && x.dniWMiesiacu !== null ? +x.dniWMiesiacu : (parseFloat(x.dni) || 0);
+
+// „2 dni w październiku (cały wniosek: 10 dni)” albo „10 dni”, gdy wniosek mieści się w miesiącu.
+export function dniOpis(x, miesiac) {
+  const cale = parseFloat(x.dni) || 0, n = dniWMiesiacu(x);
+  const dni = k => `${k} ${plural(k, ['dzień', 'dni', 'dni'])}`;
+  return n === cale ? dni(cale) : `${dni(n)} w ${MIESIAC_MIEJSC[+miesiac] || 'tym miesiącu'} (cały wniosek: ${dni(cale)})`;
+}
+
 export const todayIso = () => {
   const d = new Date();
   return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
