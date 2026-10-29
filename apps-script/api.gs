@@ -157,8 +157,11 @@ function apiDzienUtc_(s) {
 function apiDniWMiesiacu_(dataOd, dataDo, rok, miesiac, swieta) {
   const od = apiDzienUtc_(dataOd), doo = apiDzienUtc_(dataDo);
   if (od === null || doo === null) return null;
-  const start = Math.max(od, Date.UTC(+rok, +miesiac - 1, 1));
-  const end = Math.min(doo, Date.UTC(+rok, +miesiac, 0));
+  return apiDniRobocze_(Math.max(od, Date.UTC(+rok, +miesiac - 1, 1)), Math.min(doo, Date.UTC(+rok, +miesiac, 0)), swieta);
+}
+
+// Dni pon–pt bez świąt między start i end (ms UTC północy, włącznie).
+function apiDniRobocze_(start, end, swieta) {
   const wolne = {};
   (swieta || []).forEach(function (s) { wolne[s] = true; });
   let n = 0;
@@ -179,6 +182,108 @@ function apiDodajDniWMiesiacu_(lista, rok, miesiac) {
     const n = apiDniWMiesiacu_(x.dataOd, x.dataDo, rok, miesiac, swieta);
     if (n !== null) x.dniWMiesiacu = n;
   });
+}
+
+// ---------- zestawienie urlopów pracownika za wybrany okres (panel admina) ----------
+// Wnioski z arkusza Urlopy nachodzące na okres od–do. Wniosek wystający poza okres: liczymy tylko jego
+// dni robocze w okresie (dniWOkresie); wniosek w całości w okresie: dni z arkusza.
+
+function apiIsoDnia_(v) {
+  if (apiIsDate_(v)) return isNaN(v.getTime()) ? null : Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const t = apiDzienUtc_(v);
+  return t === null ? null : new Date(t).toISOString().slice(0, 10);
+}
+
+function apiUrlopyZakres_(pracownikId, dataOd, dataDo) {
+  const od = apiIsoDnia_(dataOd), doo = apiIsoDnia_(dataDo);
+  if (!od || !doo) return { ok: false, error: 'Podaj daty od i do.' };
+  if (od > doo) return { ok: false, error: 'Data „od” musi być przed datą „do”.' };
+  if (apiDzienUtc_(doo) - apiDzienUtc_(od) > 10 * 366 * 864e5) return { ok: false, error: 'Okres może mieć najwyżej 10 lat.' };
+  const user = apiGetUser_(pracownikId);
+  if (!user) return { ok: false, error: 'Nie znaleziono pracownika.' };
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Urlopy');
+  const rows = sheet && sheet.getLastRow() > 1 ? sheet.getDataRange().getValues().slice(1) : [];
+  const swieta = typeof getSwieta === 'function' ? getSwieta() : [];
+  const start = apiDzienUtc_(od), end = apiDzienUtc_(doo);
+  const lista = [];
+  rows.forEach(function (r) {
+    if (String(r[1]).trim() !== String(pracownikId).trim()) return;
+    const wOd = apiIsoDnia_(r[4]), wDo = apiIsoDnia_(r[5]) || wOd;
+    if (!wOd || wOd > doo || wDo < od) return;
+    const dni = parseFloat(r[6]) || 0;
+    const caly = wOd >= od && wDo <= doo;
+    lista.push({
+      typ: String(r[3] || 'Inny'),
+      dataOd: wOd,
+      dataDo: wDo,
+      dni: dni,
+      dniWOkresie: caly ? dni : apiDniRobocze_(Math.max(start, apiDzienUtc_(wOd)), Math.min(end, apiDzienUtc_(wDo)), swieta),
+      uwagi: String(r[7] || ''),
+      status: String(r[8] || '').trim() || 'Oczekuje',
+      decyzjaKto: String(r[10] || ''),
+      decyzjaKiedy: r[11] || '',
+    });
+  });
+  lista.sort(function (a, b) { return a.dataOd < b.dataOd ? -1 : a.dataOd > b.dataOd ? 1 : 0; });
+
+  // suma dni zatwierdzonych wg typu
+  const sumy = {};
+  lista.forEach(function (x) {
+    if (x.status !== 'Zatwierdzone') return;
+    sumy[x.typ] = (sumy[x.typ] || 0) + x.dniWOkresie;
+  });
+  const suma = Object.keys(sumy).sort().map(function (t) { return { typ: t, dni: sumy[t] }; });
+
+  let limit = null;
+  if (typeof getUrlopySummary === 'function') {
+    const s = getUrlopySummary(pracownikId);
+    if (s && s.limitBiezacy !== null && s.limitBiezacy !== undefined) {
+      limit = { rok: new Date().getFullYear(), limitBiezacy: s.limitBiezacy, limitZalegly: s.limitZalegly,
+        wykorzystane: s.wykorzystaneUrlop, pozostalyBiezacy: s.pozostalyBiezacy, pozostalyZalegly: s.pozostalyZalegly };
+    }
+  }
+  return { pracownik: (String(user.imie || '') + ' ' + String(user.nazwisko || '')).trim(), od: od, do: doo, lista: lista, suma: suma, limit: limit };
+}
+
+function apiPdfUrlopyZakres_(pracownikId, dataOd, dataDo) {
+  const z = apiUrlopyZakres_(pracownikId, dataOd, dataDo);
+  if (z.ok === false) return z;
+  const pl = function (iso) { return iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4); };
+  const nazwa = 'Urlopy_' + z.pracownik.replace(/\s+/g, '_') + '_' + z.od + '_' + z.do;
+  const doc = DocumentApp.create(nazwa);
+  const body = doc.getBody();
+  body.setMarginTop(40).setMarginBottom(40).setMarginLeft(40).setMarginRight(40);
+  body.appendParagraph('Zestawienie urlopów i nieobecności').setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  body.appendParagraph('Pracownik: ' + z.pracownik);
+  body.appendParagraph('Okres: ' + pl(z.od) + ' – ' + pl(z.do));
+
+  if (z.lista.length) {
+    const cells = [['Typ', 'Od', 'Do', 'Dni w okresie', 'Status', 'Uwagi']].concat(z.lista.map(function (x) {
+      return [x.typ, pl(x.dataOd), pl(x.dataDo), String(x.dniWOkresie) + (x.dniWOkresie !== x.dni ? ' (z ' + x.dni + ')' : ''), x.status, x.uwagi];
+    }));
+    const t = body.appendTable(cells);
+    t.setFontSize(9);
+    const head = t.getRow(0);
+    for (let c = 0; c < head.getNumCells(); c++) head.getCell(c).setBackgroundColor('#e9eef4').editAsText().setBold(true);
+  } else {
+    body.appendParagraph('Brak wniosków w tym okresie.');
+  }
+
+  body.appendParagraph('Podsumowanie (zatwierdzone)').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  if (z.suma.length) z.suma.forEach(function (s) { body.appendListItem(s.typ + ': ' + s.dni + ' dni'); });
+  else body.appendParagraph('Brak zatwierdzonych urlopów w tym okresie.');
+  if (z.limit) {
+    body.appendParagraph('Limit urlopu ' + z.limit.rok + ': bieżący ' + z.limit.limitBiezacy + ' dni, zaległy ' + z.limit.limitZalegly +
+      ' dni · wykorzystano ' + z.limit.wykorzystane + ' · pozostało ' + z.limit.pozostalyBiezacy + ' (bieżący) + ' + z.limit.pozostalyZalegly + ' (zaległy)');
+  }
+  body.appendParagraph('Wygenerowano: ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm')).editAsText().setFontSize(8);
+  doc.saveAndClose();
+
+  const file = DriveApp.getFileById(doc.getId());
+  const blob = file.getAs('application/pdf').setName(nazwa + '.pdf');
+  file.setTrashed(true);
+  return { ok: true, base64: Utilities.base64Encode(blob.getBytes()), nazwa: blob.getName() };
 }
 
 function apiWpisImieniaAdmina_(idWniosku, user) {
@@ -256,6 +361,8 @@ const API_ACTIONS_ = {
   pdfKsiegowosc: apiAdminAct_(function (a) { return generujRaportKsiegowosc(a.rok, a.miesiac); }),
   pdfZestawienie: apiAdminAct_(function (a) { return generujZestawienieNadgodzinUrlopy(a.rok, a.miesiac); }),
   pdfKartaPracownika: apiAdminAct_(function (a) { return generujKartePracownika(a.pracownikId, a.rok, a.miesiac); }),
+  getUrlopyZakres: apiAdminAct_(function (a) { return apiUrlopyZakres_(a.pracownikId, a.od, a.do); }),
+  pdfUrlopyZakres: apiAdminAct_(function (a) { return apiPdfUrlopyZakres_(a.pracownikId, a.od, a.do); }),
 };
 
 // ---------- logowanie i blokada PIN ----------

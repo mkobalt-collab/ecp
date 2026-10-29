@@ -1,4 +1,4 @@
-import { el, fill, toast, fmtDate, fmtH, monthPicker, statusBadge, field, dniOpis } from '../ui.js';
+import { el, fill, toast, fmtDate, fmtH, monthPicker, statusBadge, field, dniOpis, plural } from '../ui.js';
 import { offerPdf } from '../pdf.js';
 import { NetworkError } from '../api.js';
 
@@ -165,15 +165,63 @@ function wyjsciaCard(d, pracownikId) {
       statusBadge(x.status))) : note('Brak wyjść i odpracowań w tym miesiącu.'));
 }
 
+// Zestawienie wszystkich urlopów pracownika za wybrany okres (domyślnie rok oglądanego miesiąca) + PDF.
+function zestawienieUrlopow(ctx, alive, getId, getMonth) {
+  const od = el('input', { class: 'field', type: 'date' }), doo = el('input', { class: 'field', type: 'date' });
+  const out = el('div');
+  let seq = 0;
+  const args = () => ({ pracownikId: getId(), od: od.value, do: doo.value });
+  const bad = () => !od.value || !doo.value ? 'Podaj daty od i do.' : od.value > doo.value ? 'Data „od” musi być przed datą „do”.' : null;
+  const dni = n => `${n} ${plural(n, ['dzień', 'dni', 'dni'])}`;
+  function paint(z) {
+    const zatw = z.lista.filter(x => x.status === 'Zatwierdzone');
+    fill(out,
+      z.suma.length ? el('div', { class: 'pill good' }, el('div', null, el('b', null, 'Zatwierdzone w okresie:')),
+        z.suma.map(s => el('div', null, `• ${s.typ}: ${dni(s.dni)}`))) : note('Brak zatwierdzonych urlopów w tym okresie.'),
+      z.limit ? el('div', { class: 'sub' }, `Limit ${z.limit.rok}: zostało ${dni(z.limit.pozostalyBiezacy)} bieżącego` +
+        (z.limit.limitZalegly ? ` + ${dni(z.limit.pozostalyZalegly)} zaległego` : '') + ` (wykorzystano ${z.limit.wykorzystane})`) : null,
+      z.lista.length ? z.lista.map(x => el('div', { class: 'row' },
+        el('span', { class: 'grow' }, x.typ, el('div', { class: 'sub' }, `${fmtDate(x.dataOd)} – ${fmtDate(x.dataDo)}`, el('br'),
+          (x.dniWOkresie !== x.dni ? `${dni(x.dniWOkresie)} w okresie (cały wniosek: ${dni(x.dni)})` : dni(x.dni)) + (x.uwagi ? ' · ' + x.uwagi : ''))),
+        statusBadge(x.status))) : note('Brak wniosków w tym okresie.'),
+      z.lista.length ? el('div', { class: 'sub' }, `Wniosków: ${z.lista.length}, w tym zatwierdzonych: ${zatw.length}`) : null);
+  }
+  async function show() {
+    const msg = bad();
+    if (msg) { toast(msg, 'err'); return; }
+    const mine = ++seq;
+    fill(out, note('Wczytywanie…'));
+    const res = await call(ctx, 'getUrlopyZakres', args());
+    if (mine !== seq || !alive()) return;
+    if (res) paint(res.data); else fill(out, note('Nie udało się wczytać.'));
+  }
+  const pdf = pdfButton(ctx, 'PDF zestawienia', 'pdfUrlopyZakres', args);
+  const node = card(el('div', { class: 'flabel' }, 'Zestawienie urlopów'),
+    el('div', { class: 'row', style: 'border:0;gap:8px;flex-wrap:wrap' }, field('Od', od), field('Do', doo)),
+    el('div', { class: 'row', style: 'border:0;padding-top:0' }, sbtn('Pokaż', show), pdf), out);
+  // nowy pracownik albo zmiana roku: okres = cały rok oglądanego miesiąca, wynik od nowa
+  function reset() {
+    const { rok } = getMonth();
+    od.value = `${rok}-01-01`; doo.value = `${rok}-12-31`;
+    seq++; fill(out);
+  }
+  return { node, reset };
+}
+
 function historia(ctx, alive, getMonth) {
   const select = el('select', { class: 'field' }, el('option', { value: '' }, 'Wczytywanie…'));
   const body = el('div');
-  let seq = 0;
+  let seq = 0, lastId = null, lastRok = null;
   const pdf = pdfButton(ctx, 'Karta PDF', 'pdfKartaPracownika', () => ({ pracownikId: select.value, ...getMonth() }), 'btn btn-pdf');
   pdf.hidden = true;
+  const zest = zestawienieUrlopow(ctx, alive, () => select.value, getMonth);
+  zest.node.hidden = true;
   async function load() {
     const id = select.value, mine = ++seq;
     pdf.hidden = !id;
+    zest.node.hidden = !id;
+    if (id && (id !== lastId || getMonth().rok !== lastRok)) zest.reset();
+    lastId = id; lastRok = getMonth().rok;
     if (!id) { fill(body); return; }
     fill(body, note('Wczytywanie…'));
     const [res, wyj] = await Promise.all([
@@ -198,7 +246,7 @@ function historia(ctx, alive, getMonth) {
     select.replaceChildren(el('option', { value: '' }, res ? 'Wybierz pracownika…' : 'Nie udało się wczytać listy'),
       ...list.map(p => el('option', { value: p.id }, `${p.imie} ${p.nazwisko}`)));
   });
-  const node = el('div', { class: 'sect' }, el('h3', null, 'Historia pracownika'), field('Pracownik', select), body, pdf);
+  const node = el('div', { class: 'sect' }, el('h3', null, 'Historia pracownika'), field('Pracownik', select), zest.node, body, pdf);
   return { node, load };
 }
 

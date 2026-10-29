@@ -55,6 +55,8 @@ function seed() {
   if (t.getDate() > 2) state.godziny.push(mk(1, '08:00', '16:00'), mk(2, '08:00', '17:30', 'Inwentaryzacja'));
   state.nieob.push({ wiersz: state.nextRow++, id: 'W-' + state.nextId++, pid: 'P001', pracownik: 'Anna Kowalska', typ: 'Urlop wypoczynkowy', dataOd: iso(new Date(y, m, 20)), dataDo: iso(new Date(y, m, 22)), dni: 3, uwagi: '', status: 'Oczekuje', zlozono: '01.01.' + y + ' 09:00' });
   state.wyj.push({ wiersz: state.nextRow++, pid: 'P001', pracownik: 'Anna Kowalska', rodzaj: 'Wyjście prywatne', data: iso(new Date(y, m, 1)), od: '10:00', do: '12:00', godziny: 2, uwagi: '', status: 'Zatwierdzone' });
+  state.nieob.push({ wiersz: state.nextRow++, id: 'W-' + state.nextId++, pid: 'P001', pracownik: 'Anna Kowalska', typ: 'Urlop wypoczynkowy', dataOd: iso(new Date(y - 1, 11, 29)), dataDo: iso(new Date(y, 0, 2)), dni: 4, uwagi: 'Święta', status: 'Zatwierdzone', zlozono: '01.12.' + (y - 1) + ' 09:00' });
+  state.nieob.push({ wiersz: state.nextRow++, id: 'W-' + state.nextId++, pid: 'P001', pracownik: 'Anna Kowalska', typ: 'Chorobowe (L4)', dataOd: iso(new Date(y, 2, 2)), dataDo: iso(new Date(y, 2, 4)), dni: 3, uwagi: '', status: 'Zatwierdzone', zlozono: '02.03.' + y + ' 08:00' });
   state.nieob.push({ wiersz: state.nextRow++, id: 'W-' + state.nextId++, pid: 'P002', pracownik: 'Jan Nowak', typ: 'Urlop wypoczynkowy', dataOd: iso(new Date(y, m, 5)), dataDo: iso(new Date(y, m, 13)), dni: 7, uwagi: 'Wyjazd rodzinny', status: 'Oczekuje', zlozono: '02.01.' + y + ' 10:30' });
   state.wyj.push({ wiersz: state.nextRow++, pid: 'P002', pracownik: 'Jan Nowak', rodzaj: 'Wyjście prywatne', data: iso(new Date(y, m, 2)), od: '14:00', do: '15:30', godziny: 1.5, uwagi: 'Wizyta u lekarza', status: 'Oczekuje' });
   state.godziny.push({ wiersz: state.nextRow++, pid: 'P002', data: iso(new Date(y, m, 1)), od: '08:00', do: '16:00', przepracowane: 8, nadgodziny: 0, projekt: '', uwagi: '' });
@@ -238,6 +240,19 @@ const ACTIONS = {
   pdfWnioskiMiesiaca: { role: 'admin', run: () => ({ ok: true, base64: PDF_B64, nazwa: 'Wnioski_miesiaca.pdf' }) },
   pdfKsiegowosc: { role: 'admin', run: () => ({ ok: true, base64: PDF_B64, nazwa: 'Ksiegowosc.pdf' }) },
   pdfZestawienie: { role: 'admin', run: () => ({ ok: true, base64: PDF_B64, nazwa: 'Zestawienie.pdf' }) },
+  getUrlopyZakres: { role: 'admin', run: (a, args) => {
+    const u = byId(args.pracownikId);
+    if (!u) return { ok: false, error: 'Nie znaleziono pracownika.' };
+    if (!args.od || !args.do || args.od > args.do) return { ok: false, error: 'Data „od” musi być przed datą „do”.' };
+    const dniOkres = (od, doo) => { let n = 0; for (let t = Date.parse(od + 'T00:00:00Z'); t <= Date.parse(doo + 'T00:00:00Z'); t += 864e5) { const w = new Date(t).getUTCDay(); if (w && w !== 6) n++; } return n; };
+    const lista = state.nieob.filter(n => n.pid === u.id && n.dataOd <= args.do && n.dataDo >= args.od).sort((x, y) => x.dataOd.localeCompare(y.dataOd))
+      .map(n => ({ typ: n.typ, dataOd: n.dataOd, dataDo: n.dataDo, dni: n.dni, dniWOkresie: n.dataOd >= args.od && n.dataDo <= args.do ? n.dni : dniOkres(n.dataOd > args.od ? n.dataOd : args.od, n.dataDo < args.do ? n.dataDo : args.do), uwagi: n.uwagi, status: n.status, decyzjaKto: '', decyzjaKiedy: '' }));
+    const sumy = {};
+    lista.filter(x => x.status === 'Zatwierdzone').forEach(x => { sumy[x.typ] = (sumy[x.typ] || 0) + x.dniWOkresie; });
+    return { pracownik: `${u.imie} ${u.nazwisko}`, od: args.od, do: args.do, lista, suma: Object.keys(sumy).sort().map(t => ({ typ: t, dni: sumy[t] })),
+      limit: { rok: today().getFullYear(), limitBiezacy: 26, limitZalegly: 4, wykorzystane: 6, pozostalyBiezacy: 24, pozostalyZalegly: 0 } };
+  } },
+  pdfUrlopyZakres: { role: 'admin', run: (a, args) => { const z = ACTIONS.getUrlopyZakres.run(a, args); return z.ok === false ? z : { ok: true, base64: PDF_B64, nazwa: 'Urlopy_' + args.pracownikId + '.pdf' }; } },
   pdfKartaPracownika: { role: 'admin', run: (a, args) => byId(args.pracownikId) ? { ok: true, base64: PDF_B64, nazwa: 'Karta_' + args.pracownikId + '.pdf' } : { ok: false, error: 'Nie znaleziono pracownika' } },
 };
 

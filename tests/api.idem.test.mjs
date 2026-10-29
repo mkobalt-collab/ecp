@@ -119,7 +119,7 @@ const USER_ACTIONS = ['init', 'zapiszGodziny', 'zapiszUrlop', 'zapiszWyjscie', '
 const ADMIN_ACTIONS = ['getWnioskiOczekujace', 'ustawStatusUrlopu', 'pdfWniosku', 'getWyjsciaAdmin', 'zmienStatusWyjscia',
   'adminUsunWyjscie', 'getNieobecnosciAdmin', 'adminUsunNieobecnosc', 'getPracownicy', 'getHistoriaPracownika',
   'getRaportMiesieczny', 'pdfRaportMiesieczny', 'pdfKartyEwidencji', 'pdfNadgodziny', 'pdfWnioskiMiesiaca',
-  'pdfKsiegowosc', 'pdfZestawienie', 'pdfKartaPracownika'];
+  'pdfKsiegowosc', 'pdfZestawienie', 'pdfKartaPracownika', 'getUrlopyZakres', 'pdfUrlopyZakres'];
 
 test('every spec action is registered with the right role', () => {
   const api = setup();
